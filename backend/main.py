@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS bounties (
 ''')
 conn.commit()
 
+c. execute('''
+    CREATE TABLE IF NOT EXISTS users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        xrp_address TEXT,
+        xrp_secret TEXT,
+    )
+''')
+
 class BountyCreate(BaseModel):
     github_issue_url: str
     funder_address: str
