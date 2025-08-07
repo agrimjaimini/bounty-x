@@ -1,50 +1,59 @@
+"""SQLite data access layer for Bounty-X.
+
+Provides helpers to initialize the schema, CRUD bounties and users,
+and compute aggregate statistics.
+"""
+
 import sqlite3
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import contextlib
+import os
 
-# Database configuration
-DB_PATH = "bounties.db"
+DB_PATH = os.path.join(os.path.dirname(__file__), "bounties.db")
 
 class DatabaseError(Exception):
-    """Custom exception for database operations"""
+    """Raised for database-level errors in the data access layer."""
     pass
 
 @contextlib.contextmanager
 def get_db_connection():
-    """Context manager for database connections"""
+    """Yield a SQLite connection with Row factory enabled."""
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    # Return rows as dict-like objects for safer column access
+    conn.row_factory = sqlite3.Row
     try:
         yield conn
     finally:
         conn.close()
 
 def init_database():
-    """Initialize the database with required tables"""
+    """Create tables if they do not exist."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
-        # Create bounties table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS bounties (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 funder_id INTEGER NOT NULL,
                 bounty_name TEXT NOT NULL,
+                description TEXT,
                 github_issue_url TEXT NOT NULL,
                 funder_address TEXT NOT NULL,
                 developer_address TEXT,
                 amount REAL NOT NULL,
                 escrow_id TEXT,
                 escrow_sequence INTEGER,
-                escrow_condition TEXT,
+                escrow_secret TEXT,
                 escrow_fulfillment TEXT,
+                developer_secret_key TEXT,
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
         ''')
         
-        # Create users table
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,9 +73,8 @@ def init_database():
         
         conn.commit()
 
-# User Management Functions
 def create_user(username: str, password: str, xrp_address: str, xrp_secret: str, xrp_seed: str, balance: float) -> int:
-    """Create a new user and return the user ID"""
+    """Insert a new user and return its id."""
     try:
         now = datetime.now(timezone.utc).isoformat()
         with get_db_connection() as conn:
@@ -77,13 +85,18 @@ def create_user(username: str, password: str, xrp_address: str, xrp_secret: str,
             ''', (username, password, xrp_address, xrp_secret, xrp_seed, balance, now))
             conn.commit()
             return cursor.lastrowid
-    except sqlite3.IntegrityError:
-        raise DatabaseError("Username already exists")
+    except sqlite3.IntegrityError as e:
+        if "UNIQUE constraint failed" in str(e):
+            raise DatabaseError(f"Username '{username}' already exists")
+        else:
+            raise DatabaseError(f"Database integrity error: {str(e)}")
+    except sqlite3.OperationalError as e:
+        raise DatabaseError(f"Database operation failed: {str(e)}")
     except Exception as e:
         raise DatabaseError(f"Failed to create user: {str(e)}")
 
 def get_user_by_credentials(username: str, password: str) -> Optional[Dict[str, Any]]:
-    """Get user by username and password"""
+    """Return user row dict if username/password matches, else None."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -112,11 +125,13 @@ def get_user_by_credentials(username: str, password: str) -> Optional[Dict[str, 
                     'last_updated': row[11]
                 }
             return None
+    except sqlite3.OperationalError as e:
+        raise DatabaseError(f"Database operation failed: {str(e)}")
     except Exception as e:
         raise DatabaseError(f"Failed to get user: {str(e)}")
 
 def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
-    """Get user by ID"""
+    """Return a user row by id or None."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -149,7 +164,7 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
         raise DatabaseError(f"Failed to get user: {str(e)}")
 
 def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
-    """Get user by username"""
+    """Return a user row by username or None."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -182,7 +197,7 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
         raise DatabaseError(f"Failed to get user: {str(e)}")
 
 def get_all_users() -> List[Dict[str, Any]]:
-    """Get all users (for debugging)"""
+    """Return list of minimal user profiles (id, username, address)."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -198,7 +213,7 @@ def get_all_users() -> List[Dict[str, Any]]:
         raise DatabaseError(f"Failed to get users: {str(e)}")
 
 def update_user_bounty_created(user_id: int, amount: float) -> bool:
-    """Update user statistics when a bounty is created"""
+    """Increment creator stats after a bounty is created."""
     try:
         now = datetime.now(timezone.utc).isoformat()
         with get_db_connection() as conn:
@@ -216,7 +231,7 @@ def update_user_bounty_created(user_id: int, amount: float) -> bool:
         raise DatabaseError(f"Failed to update user bounty created stats: {str(e)}")
 
 def update_user_bounty_accepted(user_id: int) -> bool:
-    """Update user statistics when a bounty is accepted"""
+    """Increment accepted counter for a user."""
     try:
         now = datetime.now(timezone.utc).isoformat()
         with get_db_connection() as conn:
@@ -233,7 +248,7 @@ def update_user_bounty_accepted(user_id: int) -> bool:
         raise DatabaseError(f"Failed to update user bounty accepted stats: {str(e)}")
 
 def update_user_bounty_claimed(user_id: int, amount: float) -> bool:
-    """Update user statistics when a bounty is claimed"""
+    """Add earned amount to developer and update balance."""
     try:
         now = datetime.now(timezone.utc).isoformat()
         with get_db_connection() as conn:
@@ -251,7 +266,7 @@ def update_user_bounty_claimed(user_id: int, amount: float) -> bool:
         raise DatabaseError(f"Failed to update user bounty claimed stats: {str(e)}")
 
 def update_user_xrp_balance(user_id: int, new_balance: float) -> bool:
-    """Update user's current XRP balance"""
+    """Set the current_xrp_balance for a user."""
     try:
         now = datetime.now(timezone.utc).isoformat()
         with get_db_connection() as conn:
@@ -267,15 +282,13 @@ def update_user_xrp_balance(user_id: int, new_balance: float) -> bool:
     except Exception as e:
         raise DatabaseError(f"Failed to update user XRP balance: {str(e)}")
 
-# Bounty Management Functions
-def create_bounty(funder_id: int, bounty_name: str, github_issue_url: str, funder_address: str, amount: float) -> int:
-    """Create a new bounty and return the bounty ID"""
+def create_bounty(funder_id: int, bounty_name: str, description: str, github_issue_url: str, funder_address: str, amount: float) -> int:
+    """Insert a new bounty and update funder stats; return bounty id."""
     try:
         now = datetime.now(timezone.utc).isoformat()
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # Check if user has sufficient balance
             cursor.execute('SELECT current_xrp_balance FROM users WHERE id = ?', (funder_id,))
             user_balance = cursor.fetchone()
             if not user_balance:
@@ -285,12 +298,11 @@ def create_bounty(funder_id: int, bounty_name: str, github_issue_url: str, funde
                 raise DatabaseError(f"Insufficient balance. Current: {user_balance[0]} XRP, Required: {amount} XRP")
             
             cursor.execute('''
-                INSERT INTO bounties (funder_id, bounty_name, github_issue_url, funder_address, amount, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (funder_id, bounty_name, github_issue_url, funder_address, amount, "open", now, now))
+                INSERT INTO bounties (funder_id, bounty_name, description, github_issue_url, funder_address, amount, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (funder_id, bounty_name, description, github_issue_url, funder_address, amount, "open", now, now))
             bounty_id = cursor.lastrowid
             
-            # Update funder's statistics (don't decrease balance yet - escrow will handle that)
             cursor.execute('''
                 UPDATE users 
                 SET bounties_created = bounties_created + 1,
@@ -304,145 +316,111 @@ def create_bounty(funder_id: int, bounty_name: str, github_issue_url: str, funde
     except Exception as e:
         raise DatabaseError(f"Failed to create bounty: {str(e)}")
 
+def _map_bounty_row(row: sqlite3.Row) -> Dict[str, Any]:
+    """Convert a bounty row to a serializable dict."""
+    return {
+        'id': row['id'],
+        'funder_id': row['funder_id'],
+        'bounty_name': row['bounty_name'],
+        'description': row['description'],
+        'github_issue_url': row['github_issue_url'],
+        'funder_address': row['funder_address'],
+        'developer_address': row['developer_address'],
+        'amount': row['amount'],
+        'escrow_id': row['escrow_id'],
+        'escrow_sequence': row['escrow_sequence'],
+        'escrow_condition': None,
+        'escrow_fulfillment': row['escrow_fulfillment'],
+        'developer_secret_key': row['developer_secret_key'],
+        'status': row['status'],
+        'created_at': row['created_at'],
+        'updated_at': row['updated_at']
+    }
+
 def get_bounty_by_id(bounty_id: int) -> Optional[Dict[str, Any]]:
-    """Get bounty by ID"""
+    """Return a bounty by id or None."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT * FROM bounties WHERE id = ?', (bounty_id,))
+            cursor.execute('''
+                SELECT id, funder_id, bounty_name, description, github_issue_url, funder_address, 
+                       developer_address, amount, escrow_id, escrow_sequence, escrow_secret, 
+                       escrow_fulfillment, developer_secret_key, status, created_at, updated_at
+                FROM bounties WHERE id = ?
+            ''', (bounty_id,))
             row = cursor.fetchone()
-            
             if row:
-                return {
-                    'id': row[0],
-                    'funder_id': row[1],
-                    'bounty_name': row[2],
-                    'github_issue_url': row[3],
-                    'funder_address': row[4],
-                    'developer_address': row[5],
-                    'amount': row[6],
-                    'escrow_id': row[7],
-                    'escrow_sequence': row[8],
-                    'escrow_condition': row[9],
-                    'escrow_fulfillment': row[10],
-                    'status': row[11],
-                    'created_at': row[12],
-                    'updated_at': row[13]
-                }
+                return _map_bounty_row(row)
             return None
     except Exception as e:
         raise DatabaseError(f"Failed to get bounty: {str(e)}")
 
 def get_all_bounties() -> List[Dict[str, Any]]:
-    """Get all bounties"""
+    """Return all bounties ordered by creation date descending."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT * FROM bounties ORDER BY created_at DESC')
+            cursor.execute('''
+                SELECT id, funder_id, bounty_name, description, github_issue_url, funder_address, 
+                       developer_address, amount, escrow_id, escrow_sequence, escrow_secret, 
+                       escrow_fulfillment, developer_secret_key, status, created_at, updated_at
+                FROM bounties ORDER BY created_at DESC
+            ''')
             rows = cursor.fetchall()
-            
-            return [{
-                'id': row[0],
-                'funder_id': row[1],
-                'bounty_name': row[2],
-                'github_issue_url': row[3],
-                'funder_address': row[4],
-                'developer_address': row[5],
-                'amount': row[6],
-                'escrow_id': row[7],
-                'escrow_sequence': row[8],
-                'escrow_condition': row[9],
-                'escrow_fulfillment': row[10],
-                'status': row[11],
-                'created_at': row[12],
-                'updated_at': row[13]
-            } for row in rows]
+            return [_map_bounty_row(row) for row in rows]
     except Exception as e:
         raise DatabaseError(f"Failed to get bounties: {str(e)}")
 
 def get_bounties_by_status(status: str) -> List[Dict[str, Any]]:
-    """Get bounties by status"""
+    """Return bounties filtered by status."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT * FROM bounties WHERE status = ? ORDER BY created_at DESC', (status,))
+            cursor.execute('''
+                SELECT id, funder_id, bounty_name, description, github_issue_url, funder_address, 
+                       developer_address, amount, escrow_id, escrow_sequence, escrow_secret, 
+                       escrow_fulfillment, developer_secret_key, status, created_at, updated_at
+                FROM bounties WHERE status = ? ORDER BY created_at DESC
+            ''', (status,))
             rows = cursor.fetchall()
-            
-            return [{
-                'id': row[0],
-                'funder_id': row[1],
-                'bounty_name': row[2],
-                'github_issue_url': row[3],
-                'funder_address': row[4],
-                'developer_address': row[5],
-                'amount': row[6],
-                'escrow_id': row[7],
-                'escrow_sequence': row[8],
-                'escrow_condition': row[9],
-                'escrow_fulfillment': row[10],
-                'status': row[11],
-                'created_at': row[12],
-                'updated_at': row[13]
-            } for row in rows]
+            return [_map_bounty_row(row) for row in rows]
     except Exception as e:
         raise DatabaseError(f"Failed to get bounties by status: {str(e)}")
 
 def get_bounties_by_funder(funder_id: int) -> List[Dict[str, Any]]:
-    """Get bounties by funder ID"""
+    """Return bounties authored by the given funder id."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT * FROM bounties WHERE funder_id = ? ORDER BY created_at DESC', (funder_id,))
+            cursor.execute('''
+                SELECT id, funder_id, bounty_name, description, github_issue_url, funder_address, 
+                       developer_address, amount, escrow_id, escrow_sequence, escrow_secret, 
+                       escrow_fulfillment, developer_secret_key, status, created_at, updated_at
+                FROM bounties WHERE funder_id = ? ORDER BY created_at DESC
+            ''', (funder_id,))
             rows = cursor.fetchall()
-            
-            return [{
-                'id': row[0],
-                'funder_id': row[1],
-                'bounty_name': row[2],
-                'github_issue_url': row[3],
-                'funder_address': row[4],
-                'developer_address': row[5],
-                'amount': row[6],
-                'escrow_id': row[7],
-                'escrow_sequence': row[8],
-                'escrow_condition': row[9],
-                'escrow_fulfillment': row[10],
-                'status': row[11],
-                'created_at': row[12],
-                'updated_at': row[13]
-            } for row in rows]
+            return [_map_bounty_row(row) for row in rows]
     except Exception as e:
         raise DatabaseError(f"Failed to get bounties by funder: {str(e)}")
 
 def get_bounties_by_developer(developer_address: str) -> List[Dict[str, Any]]:
-    """Get bounties by developer address"""
+    """Return bounties associated to a developer XRPL address."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT * FROM bounties WHERE developer_address = ? ORDER BY created_at DESC', (developer_address,))
+            cursor.execute('''
+                SELECT id, funder_id, bounty_name, description, github_issue_url, funder_address, 
+                       developer_address, amount, escrow_id, escrow_sequence, escrow_secret, 
+                       escrow_fulfillment, developer_secret_key, status, created_at, updated_at
+                FROM bounties WHERE developer_address = ? ORDER BY created_at DESC
+            ''', (developer_address,))
             rows = cursor.fetchall()
-            
-            return [{
-                'id': row[0],
-                'funder_id': row[1],
-                'bounty_name': row[2],
-                'github_issue_url': row[3],
-                'funder_address': row[4],
-                'developer_address': row[5],
-                'amount': row[6],
-                'escrow_id': row[7],
-                'escrow_sequence': row[8],
-                'escrow_condition': row[9],
-                'escrow_fulfillment': row[10],
-                'status': row[11],
-                'created_at': row[12],
-                'updated_at': row[13]
-            } for row in rows]
+            return [_map_bounty_row(row) for row in rows]
     except Exception as e:
         raise DatabaseError(f"Failed to get bounties by developer: {str(e)}")
 
 def update_bounty_status(bounty_id: int, status: str) -> bool:
-    """Update bounty status"""
+    """Set a bounty status and timestamp its update."""
     try:
         now = datetime.now(timezone.utc).isoformat()
         with get_db_connection() as conn:
@@ -458,13 +436,12 @@ def update_bounty_status(bounty_id: int, status: str) -> bool:
         raise DatabaseError(f"Failed to update bounty status: {str(e)}")
 
 def cancel_bounty(bounty_id: int) -> bool:
-    """Cancel a bounty and refund the funder"""
+    """Cancel an open bounty and revert funder's counters/balance."""
     try:
         now = datetime.now(timezone.utc).isoformat()
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # Get bounty details
             cursor.execute('SELECT funder_id, amount, status FROM bounties WHERE id = ?', (bounty_id,))
             bounty = cursor.fetchone()
             
@@ -474,14 +451,12 @@ def cancel_bounty(bounty_id: int) -> bool:
             if bounty[2] != "open":
                 raise DatabaseError("Can only cancel open bounties")
             
-            # Update bounty status to cancelled
             cursor.execute('''
                 UPDATE bounties 
                 SET status = ?, updated_at = ? 
                 WHERE id = ?
             ''', ("cancelled", now, bounty_id))
             
-            # Refund the funder
             cursor.execute('''
                 UPDATE users 
                 SET current_xrp_balance = current_xrp_balance + ?,
@@ -489,21 +464,20 @@ def cancel_bounty(bounty_id: int) -> bool:
                     bounties_created = bounties_created - 1,
                     last_updated = ?
                 WHERE id = ?
-            ''', (bounty[1], bounty[1], now, bounty[0]))  # bounty[1] is amount, bounty[0] is funder_id
+            ''', (bounty[1], bounty[1], now, bounty[0]))
             
             conn.commit()
             return cursor.rowcount > 0
     except Exception as e:
         raise DatabaseError(f"Failed to cancel bounty: {str(e)}")
 
-def accept_bounty(bounty_id: int, developer_address: str, escrow_id: str, escrow_sequence: int) -> bool:
-    """Accept a bounty by setting developer address and escrow details (time-based escrow)"""
+def accept_bounty(bounty_id: int, developer_address: str, escrow_id: str, escrow_sequence: int, developer_secret_key: str) -> bool:
+    """Record acceptance details and adjust funder/developer stats."""
     try:
         now = datetime.now(timezone.utc).isoformat()
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # Get the bounty to find the funder and amount
             cursor.execute('SELECT funder_id, amount FROM bounties WHERE id = ?', (bounty_id,))
             bounty = cursor.fetchone()
             
@@ -515,11 +489,10 @@ def accept_bounty(bounty_id: int, developer_address: str, escrow_id: str, escrow
             
             cursor.execute('''
                 UPDATE bounties 
-                SET developer_address = ?, escrow_id = ?, escrow_sequence = ?, escrow_condition = NULL, escrow_fulfillment = NULL, status = ?, updated_at = ? 
+                SET developer_address = ?, escrow_id = ?, escrow_sequence = ?, escrow_secret = NULL, escrow_fulfillment = NULL, developer_secret_key = ?, status = ?, updated_at = ? 
                 WHERE id = ?
-            ''', (developer_address, escrow_id, escrow_sequence, "accepted", now, bounty_id))
+            ''', (developer_address, escrow_id, escrow_sequence, developer_secret_key, "accepted", now, bounty_id))
             
-            # Decrease funder's balance when escrow is created
             cursor.execute('''
                 UPDATE users 
                 SET current_xrp_balance = current_xrp_balance - ?,
@@ -527,7 +500,6 @@ def accept_bounty(bounty_id: int, developer_address: str, escrow_id: str, escrow
                 WHERE id = ?
             ''', (amount, now, funder_id))
             
-            # Update developer's statistics (find user by XRP address)
             cursor.execute('''
                 UPDATE users 
                 SET bounties_accepted = bounties_accepted + 1,
@@ -541,13 +513,12 @@ def accept_bounty(bounty_id: int, developer_address: str, escrow_id: str, escrow
         raise DatabaseError(f"Failed to accept bounty: {str(e)}")
 
 def claim_bounty(bounty_id: int) -> bool:
-    """Mark bounty as claimed"""
+    """Mark a bounty as claimed and add earnings to the developer."""
     try:
         now = datetime.now(timezone.utc).isoformat()
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # Get the bounty to find the developer, funder, and amount
             cursor.execute('SELECT developer_address, funder_id, amount FROM bounties WHERE id = ?', (bounty_id,))
             bounty = cursor.fetchone()
             
@@ -560,17 +531,13 @@ def claim_bounty(bounty_id: int) -> bool:
                 WHERE id = ?
             ''', ("claimed", now, bounty_id))
             
-            # Update developer's statistics (find user by XRP address)
-            if bounty[0]:  # developer_address
+            if bounty[0]:
                 cursor.execute('''
                     UPDATE users 
                     SET total_xrp_earned = total_xrp_earned + ?,
                         last_updated = ?
                     WHERE xrp_address = ?
-                ''', (bounty[2], now, bounty[0]))  # bounty[2] is amount
-            
-            # Note: The escrow system handles the actual XRP transfer on the blockchain
-            # The developer's balance will be updated when they sync their wallet
+                ''', (bounty[2], now, bounty[0]))
             
             conn.commit()
             return cursor.rowcount > 0
@@ -578,21 +545,19 @@ def claim_bounty(bounty_id: int) -> bool:
         raise DatabaseError(f"Failed to claim bounty: {str(e)}")
 
 def delete_bounty(bounty_id: int) -> bool:
-    """Delete a bounty and refund the funder if it's still open"""
+    """Delete a bounty and adjust counters if it was still open."""
     try:
         now = datetime.now(timezone.utc).isoformat()
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # Get bounty details before deletion
             cursor.execute('SELECT funder_id, amount, status FROM bounties WHERE id = ?', (bounty_id,))
             bounty = cursor.fetchone()
             
             if not bounty:
                 raise DatabaseError("Bounty not found")
             
-            # If bounty is still open, refund the funder
-            if bounty[2] == "open":  # status is "open"
+            if bounty[2] == "open":
                 cursor.execute('''
                     UPDATE users 
                     SET current_xrp_balance = current_xrp_balance + ?,
@@ -600,7 +565,7 @@ def delete_bounty(bounty_id: int) -> bool:
                         bounties_created = bounties_created - 1,
                         last_updated = ?
                     WHERE id = ?
-                ''', (bounty[1], bounty[1], now, bounty[0]))  # bounty[1] is amount, bounty[0] is funder_id
+                ''', (bounty[1], bounty[1], now, bounty[0]))
             
             cursor.execute('DELETE FROM bounties WHERE id = ?', (bounty_id,))
             conn.commit()
@@ -608,112 +573,63 @@ def delete_bounty(bounty_id: int) -> bool:
     except Exception as e:
         raise DatabaseError(f"Failed to delete bounty: {str(e)}")
 
-# Search and Filter Functions
 def search_bounties_by_github_url(github_issue_url: str) -> List[Dict[str, Any]]:
-    """Search bounties by GitHub issue URL"""
+    """Search bounties by partial GitHub issue URL."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT * FROM bounties 
-                WHERE github_issue_url LIKE ? 
-                ORDER BY created_at DESC
+                SELECT id, funder_id, bounty_name, description, github_issue_url, funder_address, 
+                       developer_address, amount, escrow_id, escrow_sequence, escrow_secret, 
+                       escrow_fulfillment, developer_secret_key, status, created_at, updated_at
+                FROM bounties WHERE github_issue_url LIKE ? ORDER BY created_at DESC
             ''', (f'%{github_issue_url}%',))
             rows = cursor.fetchall()
-            
-            return [{
-                'id': row[0],
-                'funder_id': row[1],
-                'bounty_name': row[2],
-                'github_issue_url': row[3],
-                'funder_address': row[4],
-                'developer_address': row[5],
-                'amount': row[6],
-                'escrow_id': row[7],
-                'escrow_sequence': row[8],
-                'escrow_condition': row[9],
-                'escrow_fulfillment': row[10],
-                'status': row[11],
-                'created_at': row[12],
-                'updated_at': row[13]
-            } for row in rows]
+            return [_map_bounty_row(row) for row in rows]
     except Exception as e:
         raise DatabaseError(f"Failed to search bounties: {str(e)}")
 
 def search_bounties_by_name(bounty_name: str) -> List[Dict[str, Any]]:
-    """Search bounties by bounty name"""
+    """Search bounties by partial name match."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT * FROM bounties 
-                WHERE bounty_name LIKE ? 
-                ORDER BY created_at DESC
+                SELECT id, funder_id, bounty_name, description, github_issue_url, funder_address, 
+                       developer_address, amount, escrow_id, escrow_sequence, escrow_secret, 
+                       escrow_fulfillment, developer_secret_key, status, created_at, updated_at
+                FROM bounties WHERE bounty_name LIKE ? ORDER BY created_at DESC
             ''', (f'%{bounty_name}%',))
             rows = cursor.fetchall()
-            
-            return [{
-                'id': row[0],
-                'funder_id': row[1],
-                'bounty_name': row[2],
-                'github_issue_url': row[3],
-                'funder_address': row[4],
-                'developer_address': row[5],
-                'amount': row[6],
-                'escrow_id': row[7],
-                'escrow_sequence': row[8],
-                'escrow_condition': row[9],
-                'escrow_fulfillment': row[10],
-                'status': row[11],
-                'created_at': row[12],
-                'updated_at': row[13]
-            } for row in rows]
+            return [_map_bounty_row(row) for row in rows]
     except Exception as e:
         raise DatabaseError(f"Failed to search bounties by name: {str(e)}")
 
 def get_bounties_by_amount_range(min_amount: float, max_amount: float) -> List[Dict[str, Any]]:
-    """Get bounties within an amount range"""
+    """Return bounties with amount between the given values."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT * FROM bounties 
-                WHERE amount BETWEEN ? AND ? 
-                ORDER BY amount DESC
+                SELECT id, funder_id, bounty_name, description, github_issue_url, funder_address, 
+                       developer_address, amount, escrow_id, escrow_sequence, escrow_secret, 
+                       escrow_fulfillment, developer_secret_key, status, created_at, updated_at
+                FROM bounties WHERE amount BETWEEN ? AND ? ORDER BY amount DESC
             ''', (min_amount, max_amount))
             rows = cursor.fetchall()
-            
-            return [{
-                'id': row[0],
-                'funder_id': row[1],
-                'bounty_name': row[2],
-                'github_issue_url': row[3],
-                'funder_address': row[4],
-                'developer_address': row[5],
-                'amount': row[6],
-                'escrow_id': row[7],
-                'escrow_sequence': row[8],
-                'escrow_condition': row[9],
-                'escrow_fulfillment': row[10],
-                'status': row[11],
-                'created_at': row[12],
-                'updated_at': row[13]
-            } for row in rows]
+            return [_map_bounty_row(row) for row in rows]
     except Exception as e:
         raise DatabaseError(f"Failed to get bounties by amount range: {str(e)}")
 
-# Statistics Functions
 def get_bounty_statistics() -> Dict[str, Any]:
-    """Get overall bounty statistics"""
+    """Aggregate basic counts and sum of amounts for bounties."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # Total bounties
             cursor.execute('SELECT COUNT(*) FROM bounties')
             total_bounties = cursor.fetchone()[0]
             
-            # Bounties by status
             cursor.execute('''
                 SELECT status, COUNT(*) 
                 FROM bounties 
@@ -721,12 +637,10 @@ def get_bounty_statistics() -> Dict[str, Any]:
             ''')
             status_counts = dict(cursor.fetchall())
             
-            # Get counts for each status
             open_bounties = status_counts.get('open', 0)
             accepted_bounties = status_counts.get('accepted', 0)
             claimed_bounties = status_counts.get('claimed', 0)
             
-            # Total amount across all bounties
             cursor.execute('''
                 SELECT COALESCE(SUM(amount), 0) 
                 FROM bounties
@@ -739,18 +653,17 @@ def get_bounty_statistics() -> Dict[str, Any]:
                 'accepted_bounties': accepted_bounties,
                 'claimed_bounties': claimed_bounties,
                 'total_amount': total_amount,
-                'status_counts': status_counts  # Keep for backward compatibility
+                'status_counts': status_counts
             }
     except Exception as e:
         raise DatabaseError(f"Failed to get bounty statistics: {str(e)}")
 
 def get_user_statistics(user_id: int) -> Dict[str, Any]:
-    """Get statistics for a specific user"""
+    """Aggregate counts and amounts for a single user's activity."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # Bounties created by user
             cursor.execute('''
                 SELECT COUNT(*) 
                 FROM bounties 
@@ -758,7 +671,6 @@ def get_user_statistics(user_id: int) -> Dict[str, Any]:
             ''', (user_id,))
             bounties_created = cursor.fetchone()[0]
             
-            # Total amount funded by user
             cursor.execute('''
                 SELECT COALESCE(SUM(amount), 0) 
                 FROM bounties 
@@ -766,7 +678,6 @@ def get_user_statistics(user_id: int) -> Dict[str, Any]:
             ''', (user_id,))
             total_funded = cursor.fetchone()[0]
             
-            # Bounties accepted by user
             user = get_user_by_id(user_id)
             if user and user['xrp_address']:
                 cursor.execute('''
@@ -776,7 +687,6 @@ def get_user_statistics(user_id: int) -> Dict[str, Any]:
                 ''', (user['xrp_address'],))
                 bounties_accepted = cursor.fetchone()[0]
                 
-                # Total amount earned by user
                 cursor.execute('''
                     SELECT COALESCE(SUM(amount), 0) 
                     FROM bounties 
@@ -797,20 +707,17 @@ def get_user_statistics(user_id: int) -> Dict[str, Any]:
         raise DatabaseError(f"Failed to get user statistics: {str(e)}")
 
 def get_platform_statistics() -> Dict[str, Any]:
-    """Get comprehensive platform statistics"""
+    """Platform-wide aggregates (users, bounties, and amount subtotals)."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # User statistics
             cursor.execute('SELECT COUNT(*) FROM users')
             total_users = cursor.fetchone()[0]
             
-            # Bounty statistics
             cursor.execute('SELECT COUNT(*) FROM bounties')
             total_bounties = cursor.fetchone()[0]
             
-            # Bounties by status
             cursor.execute('''
                 SELECT status, COUNT(*) 
                 FROM bounties 
@@ -818,7 +725,6 @@ def get_platform_statistics() -> Dict[str, Any]:
             ''')
             status_counts = dict(cursor.fetchall())
             
-            # Amount statistics
             cursor.execute('''
                 SELECT COALESCE(SUM(amount), 0) 
                 FROM bounties
@@ -839,7 +745,6 @@ def get_platform_statistics() -> Dict[str, Any]:
             ''')
             claimed_amount = cursor.fetchone()[0]
             
-            # User activity statistics
             cursor.execute('''
                 SELECT 
                     COALESCE(SUM(bounties_created), 0) as total_created,
@@ -850,7 +755,6 @@ def get_platform_statistics() -> Dict[str, Any]:
             ''')
             user_stats = cursor.fetchone()
             
-            # Recent activity (last 7 days)
             cursor.execute('''
                 SELECT COUNT(*) 
                 FROM bounties 
@@ -883,12 +787,11 @@ def get_platform_statistics() -> Dict[str, Any]:
     except Exception as e:
         raise DatabaseError(f"Failed to get platform statistics: {str(e)}")
 
-# Database Maintenance Functions
 def cleanup_old_bounties(days_old: int = 30) -> int:
-    """Clean up bounties older than specified days"""
+    """Delete open bounties older than the given number of days."""
     try:
-        cutoff_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        cutoff_date = cutoff_date.replace(day=cutoff_date.day - days_old)
+        from datetime import timedelta
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)
         cutoff_iso = cutoff_date.isoformat()
         
         with get_db_connection() as conn:
@@ -902,8 +805,19 @@ def cleanup_old_bounties(days_old: int = 30) -> int:
     except Exception as e:
         raise DatabaseError(f"Failed to cleanup old bounties: {str(e)}")
 
+def get_developer_secret_key(bounty_id: int) -> Optional[str]:
+    """Return the stored developer secret key for a bounty, if any."""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT developer_secret_key FROM bounties WHERE id = ?', (bounty_id,))
+            row = cursor.fetchone()
+            return row['developer_secret_key'] if row and row['developer_secret_key'] else None
+    except Exception as e:
+        raise DatabaseError(f"Failed to get developer secret key: {str(e)}")
+
 def backup_database(backup_path: str) -> bool:
-    """Create a backup of the database"""
+    """Copy the SQLite DB file to the given path."""
     try:
         import shutil
         shutil.copy2(DB_PATH, backup_path)
@@ -912,7 +826,7 @@ def backup_database(backup_path: str) -> bool:
         raise DatabaseError(f"Failed to backup database: {str(e)}")
 
 def reset_database() -> bool:
-    """Reset the database (drop all tables and recreate)"""
+    """Drop and recreate all tables (dangerous in production)."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -926,13 +840,12 @@ def reset_database() -> bool:
         raise DatabaseError(f"Failed to reset database: {str(e)}")
 
 def recalculate_user_statistics() -> Dict[str, int]:
-    """Recalculate and update all user statistics from bounty data"""
+    """Recompute per-user counters from current bounties data."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             now = datetime.now(timezone.utc).isoformat()
             
-            # Reset all user statistics
             cursor.execute('''
                 UPDATE users 
                 SET bounties_created = 0,
@@ -942,7 +855,6 @@ def recalculate_user_statistics() -> Dict[str, int]:
                     last_updated = ?
             ''', (now,))
             
-            # Recalculate bounties created and funded by each user
             cursor.execute('''
                 UPDATE users 
                 SET bounties_created = (
@@ -957,7 +869,6 @@ def recalculate_user_statistics() -> Dict[str, int]:
                 )
             ''')
             
-            # Recalculate bounties accepted and earned by each user
             cursor.execute('''
                 UPDATE users 
                 SET bounties_accepted = (
@@ -975,7 +886,6 @@ def recalculate_user_statistics() -> Dict[str, int]:
             
             conn.commit()
             
-            # Get summary of updates
             cursor.execute('SELECT COUNT(*) FROM users')
             total_users = cursor.fetchone()[0]
             
@@ -999,5 +909,19 @@ def recalculate_user_statistics() -> Dict[str, int]:
     except Exception as e:
         raise DatabaseError(f"Failed to recalculate user statistics: {str(e)}")
 
-# Initialize database when module is imported
+def verify_developer_secret_key(bounty_id: int, secret_key: str) -> bool:
+    """Check if the provided secret key matches the one stored for the bounty."""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT developer_secret_key FROM bounties WHERE id = ?', (bounty_id,))
+            row = cursor.fetchone()
+            
+            if not row or not row[0]:
+                return False
+            
+            return row[0] == secret_key
+    except Exception as e:
+        raise DatabaseError(f"Failed to verify developer secret key: {str(e)}")
+
 init_database()

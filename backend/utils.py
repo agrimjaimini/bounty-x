@@ -1,52 +1,59 @@
-from xrpl.wallet import generate_faucet_wallet, Wallet
+"""XRPL utility helpers for Bounty-X.
 
+Includes testnet wallet management, escrow create/finish,
+GitHub PR verification, and account info helpers.
+"""
+
+from xrpl.wallet import generate_faucet_wallet, Wallet
 from xrpl.clients import JsonRpcClient
 from xrpl.models.transactions import EscrowCreate, EscrowFinish, Payment
 from xrpl.models.requests import AccountInfo
 from xrpl.utils import xrp_to_drops
 from datetime import datetime
 from xrpl.transaction import submit_and_wait
-
 from xrpl.utils import datetime_to_ripple_time
 from os import urandom
 import re
 import requests
 from typing import Optional
 import hashlib
+import secrets
+import string
+
+def generate_developer_secret_key() -> str:
+    """Create a short random key developers include in PRs for verification."""
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(32))
 
 def create_testnet_account():
+    """Create and fund a new XRPL testnet wallet via faucet."""
     client = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
     wallet = generate_faucet_wallet(client, debug=True)
-
     return wallet
 
-def generate_condition():
-    """Generate a simple preimage condition using xrpl-py's built-in functionality"""
-    # Generate a random 32-byte preimage
-    preimage = urandom(32)
-    
-    # Create SHA256 hash of the preimage (this is the condition)
-    condition = hashlib.sha256(preimage).hexdigest().upper()
-    
-    # The fulfillment is the original preimage
-    fulfillment = preimage.hex().upper()
-    
-    return condition, fulfillment
+
 
 def add_seconds(numOfSeconds):
-    new_date = datetime.now()
+    """Return XRPL ripple-time timestamp after adding seconds to now."""
+    from datetime import timedelta
+    new_date = datetime.now() + timedelta(seconds=int(numOfSeconds))
     new_date = datetime_to_ripple_time(new_date)
-    new_date = new_date + int(numOfSeconds)
     return new_date
 
-def create_escrow(funder_seed: str, developer_address: str, amount: float, finish_after: int):
-    """Create a time-based escrow that's immediately finishable but auto-cancels after time"""
+def create_escrow(funder_seed: str, developer_address: str, amount: float, finish_after: int, max_retries: int = 3):
+    """Create a time-based escrow from funder to developer, retrying transient errors."""
     client = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
     wallet = Wallet.from_seed(funder_seed)
     
-    # Calculate dates
-    cancel_date = add_seconds(finish_after)  # Cancel after the specified time
-    finish_date = add_seconds(1)  # Finish after 1 second (effectively immediate)
+    try:
+        account_info = get_account_info(wallet.classic_address)
+        if not account_info:
+            raise Exception("Could not retrieve account information")
+    except Exception as e:
+        pass
+    
+    cancel_date = add_seconds(finish_after)
+    finish_date = add_seconds(finish_after)
 
     escrow_tx = EscrowCreate(
         account=wallet.classic_address,
@@ -54,25 +61,40 @@ def create_escrow(funder_seed: str, developer_address: str, amount: float, finis
         destination=developer_address,
         cancel_after=cancel_date,
         finish_after=finish_date
-        # finish_after set to 1 second for immediate finishability
-        # No condition parameter - using time-based escrow
     )
     
-    try:
-        response = submit_and_wait(escrow_tx, client, wallet)
-        # For time-based escrows, we don't need condition/fulfillment
-        # The response object is immutable, so we'll handle this in the calling code
-        return response
-    except Exception as e:
-        print(f"Error creating time-based escrow: {e}")
-        raise e
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            response = submit_and_wait(escrow_tx, client, wallet)
+            return response
+        except Exception as e:
+            last_error = e
+            
+            if any(error_code in str(e) for error_code in ["tecUNFUNDED_PAYMENT", "tecNO_PERMISSION", "tecPATH_DRY", "tecUNFUNDED"]):
+                break
+            
+            if attempt < max_retries - 1:
+                import time
+                time.sleep(1)
+    
+    error_msg = str(last_error)
+    if "tecUNFUNDED_PAYMENT" in error_msg:
+        raise Exception("Insufficient funds to create escrow")
+    elif "tecNO_PERMISSION" in error_msg:
+        raise Exception("No permission to create escrow - account may not be properly funded")
+    elif "tecPATH_DRY" in error_msg:
+        raise Exception("No path found for payment")
+    elif "tecUNFUNDED" in error_msg:
+        raise Exception("Account is unfunded")
+    else:
+        raise Exception(f"Failed to create escrow after {max_retries} attempts: {error_msg}")
 
 def get_escrow_transaction(escrow_id: str) -> Optional[dict]:
-    """Retrieve escrow transaction details from XRPL"""
+    """Fetch a transaction by hash and return XRPL response payload."""
     try:
         client = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
         
-        # Get transaction details
         from xrpl.models.requests import Tx
         tx_request = Tx(transaction=escrow_id)
         response = client.request(tx_request)
@@ -80,60 +102,50 @@ def get_escrow_transaction(escrow_id: str) -> Optional[dict]:
         if response.is_successful():
             return response.result
         else:
-            print(f"Failed to get escrow transaction: {response.result}")
             return None
             
     except Exception as e:
-        print(f"Error retrieving escrow transaction: {e}")
         return None
 
-def finish_time_based_escrow(escrow_id: str, escrow_sequence: int, finisher_seed: str, owner_address: str):
-    """Finish a time-based escrow transaction"""
+def finish_time_based_escrow(escrow_sequence: int, finisher_seed: str, owner_address: str):
+    """Submit EscrowFinish to release a time-based escrow."""
     try:
         client = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
         finisher_wallet = Wallet.from_seed(finisher_seed)
         
-        # Create time-based escrow finish transaction (no condition/fulfillment needed)
         escrow_finish_tx = EscrowFinish(
             account=finisher_wallet.classic_address,
             owner=owner_address,
             offer_sequence=escrow_sequence
-            # No condition or fulfillment for time-based escrows
         )
         
-        # Submit the transaction
         response = submit_and_wait(escrow_finish_tx, client, finisher_wallet)
         return response
         
     except Exception as e:
-        print(f"Error finishing time-based escrow: {e}")
         raise e
 
 def extract_issue_number_from_url(github_issue_url: str) -> Optional[str]:
-    """Extract issue number from GitHub issue URL"""
+    """Return the GitHub issue number from a typical issue URL."""
     pattern = r'github\.com/[^/]+/[^/]+/issues/(\d+)'
     match = re.search(pattern, github_issue_url)
     return match.group(1) if match else None
 
-def verify_merge_request_contains_issue(merge_request_url: str, issue_number: str) -> bool:
-    """Verify that the merge request contains a reference to the issue number"""
+def verify_merge_request_contains_issue(merge_request_url: str, issue_number: str, developer_secret_key: str = None) -> bool:
+    """Check a PR title/body contains the issue reference and optional secret key."""
     try:
-        # Convert GitHub PR URL to API URL
         api_url = merge_request_url.replace('github.com', 'api.github.com/repos')
         api_url = api_url.replace('/pull/', '/pulls/')
         
-        # Get PR details from GitHub API
         response = requests.get(api_url)
         if response.status_code != 200:
             return False
         
         pr_data = response.json()
         
-        # Check title and body for issue reference
         title = pr_data.get('title', '')
         body = pr_data.get('body', '')
         
-        # Look for issue references like #123, closes #123, fixes #123, etc.
         issue_patterns = [
             rf'bounty-x{issue_number}\b',
             rf'#{issue_number}\b',
@@ -145,17 +157,26 @@ def verify_merge_request_contains_issue(merge_request_url: str, issue_number: st
             rf'resolve #{issue_number}\b'
         ]
         
+        issue_found = False
         for pattern in issue_patterns:
             if re.search(pattern, title, re.IGNORECASE) or re.search(pattern, body, re.IGNORECASE):
-                return True
+                issue_found = True
+                break
         
-        return False
+        if not issue_found:
+            return False
+        
+        if developer_secret_key:
+            secret_key_found = developer_secret_key in title or developer_secret_key in body
+            return secret_key_found
+        
+        return True
         
     except Exception as e:
-        print(f"Error verifying merge request: {e}")
         return False
 
 def fund_wallet(address: str, amount: float):
+    """Deprecated helper (kept for reference). Use fund_existing_wallet instead."""
     client = JsonRpcClient("https://s.altnet.rippletest.net:51234")
     acct_info = AccountInfo(
         account=address,
@@ -163,30 +184,26 @@ def fund_wallet(address: str, amount: float):
         strict=True,
     )
     response = client.request(acct_info)
-    print("Balance:", response.result["account_data"]["Balance"], "drops")
 
 def get_account_info(address: str) -> Optional[dict]:
+    """Return balance and account fields for a classic XRPL address."""
     try:
         client = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
         
-        # Create account info request
         account_info_request = AccountInfo(
             account=address,
             ledger_index="validated",
             strict=True
         )
         
-        # Make the request
         response = client.request(account_info_request)
         
         if response.is_successful():
             account_data = response.result["account_data"]
             
-            # Convert balance from drops to XRP for readability
             balance_drops = int(account_data["Balance"])
-            balance_xrp = balance_drops / 1_000_000  # 1 XRP = 1,000,000 drops
+            balance_xrp = balance_drops / 1_000_000
             
-            # Format the response
             account_info = {
                 "address": address,
                 "balance_drops": str(balance_drops),
@@ -206,10 +223,64 @@ def get_account_info(address: str) -> Optional[dict]:
             
             return account_info
         else:
-            print(f"Failed to get account info: {response.result}")
             return None
             
     except Exception as e:
-        print(f"Error retrieving account info: {e}")
         return None
 
+def fund_existing_wallet(seed: str):
+    """Fund an existing testnet wallet via faucet and return new balance."""
+    try:
+        client = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
+        existing = Wallet.from_seed(seed)
+        funded = generate_faucet_wallet(client, existing)
+        
+        if isinstance(funded, dict):
+            address = funded.get('address', existing.classic_address)
+        else:
+            address = funded.classic_address
+        
+        from xrpl.models.requests import AccountInfo
+        balance_request = AccountInfo(
+            account=address,
+            ledger_index="validated",
+            strict=True
+        )
+        balance_response = client.request(balance_request)
+        
+        if not balance_response.is_successful():
+            raise Exception(f"Failed to get account info: {balance_response.result}")
+        
+        balance = balance_response.result["account_data"]["Balance"]
+        
+        return {
+            "address": address,
+            "balance_drops": balance,
+            "balance_xrp": int(balance) / 1_000_000
+        }
+    except Exception as e:
+        raise e
+
+def validate_account_for_escrow(seed: str, amount: float) -> bool:
+    """Basic preflight to ensure seed account has enough XRP for escrow and reserve."""
+    try:
+        client = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
+        wallet = Wallet.from_seed(seed)
+        
+        account_info = get_account_info(wallet.classic_address)
+        if not account_info:
+            return False
+        
+        balance_xrp = account_info['balance_xrp']
+        
+        required_amount = amount + 0.01
+        if balance_xrp < required_amount:
+            return False
+        
+        if balance_xrp < 20:
+            return False
+        
+        return True
+        
+    except Exception as e:
+        return False

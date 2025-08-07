@@ -1,108 +1,49 @@
-# Bounty-X: XRPL Testnet Feature Bounty Portal
+# Bounty-X
 
-A decentralized bounty platform for posting, funding, and claiming bounties on open-source GitHub issues using XRPL Testnet XRP.
+A decentralized bounty platform that connects open-source developers with funders using XRP on the XRPL testnet. Post bounties for GitHub issues, fund them with testnet XRP, and claim rewards when work is completed.
 
-## Features
+## What it does
 
-### Backend (FastAPI)
-- Post a bounty for a GitHub issue/PR with Testnet XRP escrow
-- Boost existing bounties by adding more funds
-- Claim bounties after PR merge and verification
-- Multisig escrow release by maintainers
-- Conditional escrow with time-based completion
-- GitHub integration for issue verification
+- **Post bounties** for GitHub issues with XRP escrow
+- **Fund existing bounties** to increase rewards
+- **Claim bounties** after PR merge and verification
+- **Time-based escrow** that auto-releases or cancels
+- **GitHub integration** for seamless issue tracking
 
-### Frontend (React + TypeScript)
-- Modern, responsive web interface
-- User authentication with XRP wallet integration
-- Real-time bounty browsing and management
-- Interactive bounty creation and claiming
-- User profiles with statistics
-- Mobile-responsive design
+## Getting started
 
-## Project Structure
-
-```
-bounty-x/
-├── backend/           # FastAPI backend
-│   ├── main.py       # API endpoints
-│   ├── db.py         # Database operations
-│   ├── utils.py      # XRPL utilities
-│   └── README.md     # Backend documentation
-├── frontend/         # React frontend
-│   ├── src/          # Source code
-│   ├── public/       # Static assets
-│   └── README.md     # Frontend documentation
-├── requirements.txt  # Python dependencies
-└── README.md        # This file
-```
-
-## Quick Start
-
-### Backend Setup
-
-1. Install Python dependencies:
+### Backend
 ```bash
 pip install -r requirements.txt
-```
-
-2. Start the backend server:
-```bash
 cd backend
 python main.py
 ```
+API runs on `http://localhost:8000`
 
-The API will be available at `http://localhost:8000`
-
-### Frontend Setup
-
-1. Install Node.js dependencies:
+### Frontend
 ```bash
 cd frontend
 npm install
-```
-
-2. Start the development server:
-```bash
 npm start
 ```
+App runs on `http://localhost:3000`
 
-The frontend will be available at `http://localhost:3000`
+## How it works
 
-## API Documentation
+1. **Create a bounty** - Fund a GitHub issue with testnet XRP
+2. **Accept a bounty** - Developers claim and work on issues
+3. **Submit work** - Create a PR with the bounty reference
+4. **Claim reward** - Get paid when PR is merged
 
-The backend provides a RESTful API with the following key endpoints:
+## Tech stack
 
-- `POST /register` - User registration
-- `POST /login` - User authentication
-- `POST /bounties/` - Create new bounty
-- `GET /bounties/` - List all bounties
-- `POST /bounties/{id}/accept` - Accept a bounty
-- `POST /bounties/{id}/claim` - Claim a completed bounty
-
-## Technology Stack
-
-### Backend
-- **FastAPI** - Modern Python web framework
-- **SQLite** - Database
-- **XRPL** - XRP Ledger integration
-- **Pydantic** - Data validation
-
-### Frontend
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Tailwind CSS** - Styling
-- **React Router** - Navigation
-- **Axios** - HTTP client
+**Backend:** FastAPI, SQLite, XRPL  
+**Frontend:** React, TypeScript, Tailwind CSS
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test both backend and frontend
-5. Submit a pull request
+Fork, make changes, test, and submit a PR. We welcome contributions!
 
 ## License
 
-This project is open source and available under the MIT License.
+MIT License - feel free to use and modify.
