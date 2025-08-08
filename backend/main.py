@@ -429,14 +429,17 @@ def get_bounty(bounty_id: int):
 
 @app.post("/bounties/{bounty_id}/cancel")
 def cancel_bounty(bounty_id: int):
-    """Cancel an open bounty and refund the funder."""
+    """Cancel an open bounty, adjust counters, then delete the record."""
     try:
         success = db.cancel_bounty(bounty_id)
         if not success:
             raise HTTPException(status_code=404, detail="Bounty not found")
-        
+
+        # Remove the cancelled bounty from the table to keep lists clean
+        db.delete_bounty(bounty_id)
+
         return {
-            "message": "Bounty cancelled successfully and funder refunded",
+            "message": "Bounty cancelled and deleted successfully",
             "bounty_id": bounty_id
         }
     except HTTPException:

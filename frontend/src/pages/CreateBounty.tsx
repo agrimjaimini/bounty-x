@@ -3,12 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { bountyApi } from '../services/api';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import { useToast } from '../components/ui/Toast';
 
 const CreateBounty: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const [formData, setFormData] = useState({
     bounty_name: '',
     description: '',
@@ -55,7 +53,6 @@ const CreateBounty: React.FC = () => {
     e.preventDefault();
     
     if (!validateForm()) {
-      showToast('Please fix the validation errors', 'error');
       return;
     }
 
@@ -71,12 +68,10 @@ const CreateBounty: React.FC = () => {
         amount: parseFloat(formData.amount),
         finish_after: parseInt(formData.finish_after),
       });
-      showToast('Bounty created and escrow initiated', 'success');
       navigate('/bounties');
     } catch (error: any) {
       const errorMessage = error.response?.data?.detail;
       setError(typeof errorMessage === 'string' ? errorMessage : 'Failed to create bounty. Please try again.');
-      showToast('Failed to create bounty', 'error');
     } finally {
       setLoading(false);
     }

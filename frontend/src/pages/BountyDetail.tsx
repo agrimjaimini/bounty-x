@@ -14,7 +14,8 @@ import {
   UserIcon,
   LinkIcon
 } from '@heroicons/react/24/outline';
-import { useToast } from '../components/ui/Toast';
+import { TrashIcon } from '@heroicons/react/24/solid';
+ 
 
 const BountyDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -25,6 +26,7 @@ const BountyDetail: React.FC = () => {
   const [error, setError] = useState('');
   const [showAcceptForm, setShowAcceptForm] = useState(false);
   const [showClaimForm, setShowClaimForm] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [acceptForm, setAcceptForm] = useState({
     developer_address: '',
     finish_after: '86400',
@@ -34,7 +36,6 @@ const BountyDetail: React.FC = () => {
   });
   const [developerSecretKey, setDeveloperSecretKey] = useState<string>('');
   const [actionLoading, setActionLoading] = useState(false);
-  const { showToast } = useToast();
 
   const fetchBounty = useCallback(async () => {
     try {
@@ -81,7 +82,6 @@ const BountyDetail: React.FC = () => {
       fetchBounty(); // Refresh bounty data
     } catch (error: any) {
       setError(error.response?.data?.detail || 'Failed to accept bounty');
-      showToast('Failed to accept bounty', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -101,7 +101,20 @@ const BountyDetail: React.FC = () => {
       fetchBounty(); // Refresh bounty data
     } catch (error: any) {
       setError(error.response?.data?.detail || 'Failed to claim bounty');
-      showToast('Failed to claim bounty', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCancelBounty = async () => {
+    setActionLoading(true);
+    setError('');
+    try {
+      await bountyApi.cancelBounty(parseInt(id!));
+      setShowCancelConfirm(false);
+      navigate('/bounties');
+    } catch (error: any) {
+      setError(error.response?.data?.detail || 'Failed to cancel bounty');
     } finally {
       setActionLoading(false);
     }
@@ -163,12 +176,13 @@ const BountyDetail: React.FC = () => {
     }
     
     const canAccept = bounty.status === 'open' && user.id !== bounty.funder_id;
+    const canCancel = bounty.status === 'open' && user.id === bounty.funder_id;
     
     const canClaim = bounty.status === 'accepted' && 
                      bounty.developer_address && 
                      user.xrp_address === bounty.developer_address;
     
-    return canAccept || canClaim;
+    return canAccept || canCancel || canClaim;
   };
 
   if (loading) {
@@ -448,17 +462,32 @@ const BountyDetail: React.FC = () => {
           >
             <h3 className="text-lg font-semibold text-white mb-4">Actions</h3>
             
-            {bounty.status === 'open' && user && user.id !== bounty.funder_id && (
-              <motion.button
-                onClick={() => setShowAcceptForm(true)}
-                className="btn-success"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              >
-                Accept Bounty
-              </motion.button>
-            )}
+            <div className="flex flex-wrap gap-3">
+              {bounty.status === 'open' && user && user.id !== bounty.funder_id && (
+                <motion.button
+                  onClick={() => setShowAcceptForm(true)}
+                  className="btn-success"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                >
+                  Accept Bounty
+                </motion.button>
+              )}
+
+              {bounty.status === 'open' && user && user.id === bounty.funder_id && (
+                <motion.button
+                  onClick={() => setShowCancelConfirm(true)}
+                  className="btn-danger inline-flex items-center gap-2"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                >
+                  <TrashIcon className="h-4 w-4" />
+                  Cancel Bounty
+                </motion.button>
+              )}
+            </div>
 
             {bounty.status === 'accepted' && bounty.developer_address && (
               <>
@@ -503,18 +532,7 @@ const BountyDetail: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {hasAvailableActions() && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-neutral-950/80 backdrop-blur-md border-t border-neutral-800/50 py-3">
-          <div className="max-w-4xl mx-auto px-4 flex items-center justify-end gap-3">
-            {bounty.status === 'open' && user && user.id !== bounty.funder_id && (
-              <button onClick={() => setShowAcceptForm(true)} className="btn-success">Accept Bounty</button>
-            )}
-            {bounty.status === 'accepted' && bounty.developer_address && user && user.xrp_address === bounty.developer_address && (
-              <button onClick={() => setShowClaimForm(true)} className="btn-warning">Claim Bounty</button>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Sticky bottom action bar removed per design update */}
 
       <AnimatePresence>
         {showAcceptForm && (
@@ -564,6 +582,45 @@ const BountyDetail: React.FC = () => {
                 </button>
               </div>
             </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showCancelConfirm && (
+          <motion.div 
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div 
+              className="modal-content"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            >
+              <h3 className="text-lg font-semibold text-white mb-4">Cancel Bounty</h3>
+              <p className="text-gray-300 mb-6">Are you sure you want to cancel this bounty? This action cannot be undone.</p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowCancelConfirm(false)}
+                  className="btn-secondary flex-1"
+                >
+                  Keep Open
+                </button>
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={handleCancelBounty}
+                  className="btn-danger flex-1"
+                >
+                  {actionLoading ? 'Cancelling...' : 'Confirm Cancel'}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

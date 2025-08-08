@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useToast } from '../components/ui/Toast';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 
 const Register: React.FC = () => {
@@ -17,7 +16,6 @@ const Register: React.FC = () => {
   
   const { register } = useAuth();
   const navigate = useNavigate();
-  const { showToast } = useToast();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -55,7 +53,6 @@ const Register: React.FC = () => {
     } catch (error: any) {
       const errorMessage = error.response?.data?.detail;
       setError(typeof errorMessage === 'string' ? errorMessage : 'Registration failed. Please try again.');
-      showToast('Registration failed', 'error');
     } finally {
       setLoading(false);
     }

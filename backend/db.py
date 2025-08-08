@@ -457,14 +457,15 @@ def cancel_bounty(bounty_id: int) -> bool:
                 WHERE id = ?
             ''', ("cancelled", now, bounty_id))
             
+            # No escrow or balance deduction occurs before acceptance.
+            # Only revert aggregate counters for an open bounty.
             cursor.execute('''
                 UPDATE users 
-                SET current_xrp_balance = current_xrp_balance + ?,
-                    total_xrp_funded = total_xrp_funded - ?,
+                SET total_xrp_funded = total_xrp_funded - ?,
                     bounties_created = bounties_created - 1,
                     last_updated = ?
                 WHERE id = ?
-            ''', (bounty[1], bounty[1], now, bounty[0]))
+            ''', (bounty[1], now, bounty[0]))
             
             conn.commit()
             return cursor.rowcount > 0

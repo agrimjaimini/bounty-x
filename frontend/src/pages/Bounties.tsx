@@ -11,7 +11,6 @@ import {
   ExclamationTriangleIcon 
 } from '@heroicons/react/24/outline';
 import { CodeBracketIcon } from '@heroicons/react/24/outline';
-import { useToast } from '../components/ui/Toast';
 import { SkeletonText } from '../components/ui/Skeleton';
 
 const Bounties: React.FC = () => {
@@ -24,7 +23,6 @@ const Bounties: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState(params.get('q') ?? '');
   const [statusFilter, setStatusFilter] = useState(params.get('status') ?? 'all');
   const [sortBy, setSortBy] = useState(params.get('sort') ?? 'amount');
-  const { showToast } = useToast();
 
   useEffect(() => {
     fetchBounties();
@@ -58,7 +56,6 @@ const Bounties: React.FC = () => {
       setBounties(data);
     } catch (error) {
       setError('Search failed');
-      showToast('Search failed', 'error');
       console.error('Error searching bounties:', error);
     } finally {
       setLoading(false);

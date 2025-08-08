@@ -11,6 +11,7 @@ import {
   ExclamationTriangleIcon,
   WalletIcon
 } from '@heroicons/react/24/outline';
+import { TrashIcon } from '@heroicons/react/24/solid';
 import { SkeletonText, SkeletonCircle } from '../components/ui/Skeleton';
 
 const Profile: React.FC = () => {
@@ -18,6 +19,7 @@ const Profile: React.FC = () => {
   const [userBounties, setUserBounties] = useState<Bounty[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [cancelingId, setCancelingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -81,6 +83,18 @@ const Profile: React.FC = () => {
       .split(' ')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
+  };
+
+  const handleCancel = async (bountyId: number) => {
+    try {
+      setCancelingId(bountyId);
+      await bountyApi.cancelBounty(bountyId);
+      await fetchUserBounties();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to cancel bounty');
+    } finally {
+      setCancelingId(null);
+    }
   };
 
   if (loading) {
@@ -213,9 +227,25 @@ const Profile: React.FC = () => {
                         {formatDate(bounty.created_at)}
                       </td>
                       <td className="px-6 py-4">
-                        <a href={`/bounties/${bounty.id}`} className="text-primary-400 hover:text-primary-300 font-medium transition-colors duration-200">
-                          View Details →
-                        </a>
+                        <div className="flex items-center gap-3">
+                          <a href={`/bounties/${bounty.id}`} className="text-primary-400 hover:text-primary-300 font-medium transition-colors duration-200">
+                            View Details →
+                          </a>
+                          {bounty.status === 'open' && (
+                            <button
+                              onClick={() => handleCancel(bounty.id)}
+                              className="btn-danger btn-xs inline-flex items-center gap-1"
+                              disabled={cancelingId === bounty.id}
+                            >
+                              {cancelingId === bounty.id ? 'Cancelling...' : (
+                                <>
+                                  <TrashIcon className="h-3 w-3" />
+                                  Cancel
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
