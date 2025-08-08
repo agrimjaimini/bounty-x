@@ -64,7 +64,7 @@ const Navbar: React.FC = () => {
               >
                 <div className="relative w-9 h-9 rounded-full bg-white/10 ring-1 ring-white/15 overflow-hidden flex items-center justify-center">
                   <img 
-                    src="/xrp-logo.svg" 
+                    src={process.env.PUBLIC_URL + '/xrp-logo.svg'} 
                     alt="XRP Logo" 
                     className="h-5 w-5 invert brightness-125 contrast-125 drop-shadow transition-all duration-300" 
                   />

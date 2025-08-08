@@ -353,7 +353,7 @@ const InteractiveXrpLogo: React.FC = () => {
         <div className="absolute inset-0 z-0 rounded-3xl bg-gradient-to-br from-blue-500/10 via-transparent to-blue-500/5" />
         <div className="absolute inset-0 z-10 flex items-center justify-center">
           <img
-            src="/xrp-logo.svg"
+            src={process.env.PUBLIC_URL + '/xrp-logo.svg'}
             alt="XRP Logo"
             className="h-40 w-40 filter invert drop-shadow-[0_0_30px_rgba(255,255,255,0.25)]"
           />
