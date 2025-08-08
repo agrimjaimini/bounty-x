@@ -2,6 +2,8 @@
 
 A decentralized bounty platform that connects open-source developers with funders using XRP on the XRPL testnet. Post bounties for GitHub issues, fund them with testnet XRP, and claim rewards when work is completed.
 
+Created in collaboration with Ripple as part of the XRPL Student Builder Residency.
+
 ## What it does
 
 - **Post bounties** for GitHub issues with XRP escrow
