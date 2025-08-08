@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../components/ui/Toast';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 
 const Register: React.FC = () => {
@@ -16,6 +17,7 @@ const Register: React.FC = () => {
   
   const { register } = useAuth();
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -53,6 +55,7 @@ const Register: React.FC = () => {
     } catch (error: any) {
       const errorMessage = error.response?.data?.detail;
       setError(typeof errorMessage === 'string' ? errorMessage : 'Registration failed. Please try again.');
+      showToast('Registration failed', 'error');
     } finally {
       setLoading(false);
     }
@@ -169,10 +172,14 @@ const Register: React.FC = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="btn-primary w-full flex justify-center py-4"
+                className="btn-primary w-full flex justify-center py-4 relative overflow-hidden"
               >
                 {loading ? (
-                  <div className="spinner h-5 w-5"></div>
+                  <>
+                    <div className="spinner h-5 w-5 mr-2"></div>
+                    <span>Funding...</span>
+                    <div className="absolute bottom-0 left-0 h-1 bg-white/20 animate-pulse" style={{ width: '100%' }}></div>
+                  </>
                 ) : (
                   'Create Account'
                 )}

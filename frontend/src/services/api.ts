@@ -52,6 +52,11 @@ export const userApi = {
     const response = await api.put(`/users/${userId}/balance`, { new_balance: newBalance });
     return response.data;
   },
+
+  fundWallet: async (userId: number) => {
+    const response = await api.post(`/users/${userId}/fund`);
+    return response.data;
+  },
 };
 
 // Bounty Management

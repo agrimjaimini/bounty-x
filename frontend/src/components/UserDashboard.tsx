@@ -22,7 +22,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user }) => {
 
   return (
     <div className="space-y-6">
-      {/* Welcome Section */}
       <div className="card">
         <div className="flex items-center justify-between">
           <div>
@@ -42,7 +41,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user }) => {
         </div>
       </div>
 
-      {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="card text-center">
           <div className="flex items-center justify-center mb-3">
@@ -93,7 +91,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user }) => {
         </div>
       </div>
 
-      {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="card">
           <div className="flex items-center space-x-3 mb-4">

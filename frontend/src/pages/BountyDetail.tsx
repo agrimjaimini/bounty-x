@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { SkeletonText, SkeletonCircle } from '../components/ui/Skeleton';
 import { useAuth } from '../contexts/AuthContext';
 import { bountyApi } from '../services/api';
 import { Bounty } from '../types/api';
@@ -12,6 +14,7 @@ import {
   UserIcon,
   LinkIcon
 } from '@heroicons/react/24/outline';
+import { useToast } from '../components/ui/Toast';
 
 const BountyDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -29,15 +32,11 @@ const BountyDetail: React.FC = () => {
   const [claimForm, setClaimForm] = useState({
     merge_request_url: '',
   });
+  const [developerSecretKey, setDeveloperSecretKey] = useState<string>('');
   const [actionLoading, setActionLoading] = useState(false);
+  const { showToast } = useToast();
 
-  useEffect(() => {
-    if (id) {
-      fetchBounty();
-    }
-  }, [id]);
-
-  const fetchBounty = async () => {
+  const fetchBounty = useCallback(async () => {
     try {
       setLoading(true);
       const data = await bountyApi.getBounty(parseInt(id!));
@@ -48,7 +47,19 @@ const BountyDetail: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    if (id) {
+      fetchBounty();
+    }
+  }, [id, fetchBounty]);
+
+  useEffect(() => {
+    if (bounty && bounty.developer_secret_key && !developerSecretKey) {
+      setDeveloperSecretKey(bounty.developer_secret_key);
+    }
+  }, [bounty, developerSecretKey]);
 
   const handleAcceptBounty = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,15 +67,21 @@ const BountyDetail: React.FC = () => {
     setError('');
 
     try {
-      await bountyApi.acceptBounty(parseInt(id!), {
+      const response = await bountyApi.acceptBounty(parseInt(id!), {
         developer_address: acceptForm.developer_address,
         finish_after: parseInt(acceptForm.finish_after),
       });
+      
+      // Store the developer secret key
+      if (response.developer_secret_key) {
+        setDeveloperSecretKey(response.developer_secret_key);
+      }
       
       setShowAcceptForm(false);
       fetchBounty(); // Refresh bounty data
     } catch (error: any) {
       setError(error.response?.data?.detail || 'Failed to accept bounty');
+      showToast('Failed to accept bounty', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -84,6 +101,7 @@ const BountyDetail: React.FC = () => {
       fetchBounty(); // Refresh bounty data
     } catch (error: any) {
       setError(error.response?.data?.detail || 'Failed to claim bounty');
+      showToast('Failed to claim bounty', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -124,6 +142,11 @@ const BountyDetail: React.FC = () => {
     }
   };
 
+  const extractRepoName = (githubUrl: string) => {
+    const match = githubUrl.match(/github\.com\/([^/]+\/[^/]+)/);
+    return match ? match[1] : 'Repository';
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -134,58 +157,200 @@ const BountyDetail: React.FC = () => {
     });
   };
 
+  const hasAvailableActions = () => {
+    if (!user || !bounty || bounty.status === 'claimed' || bounty.status === 'cancelled') {
+      return false;
+    }
+    
+    const canAccept = bounty.status === 'open' && user.id !== bounty.funder_id;
+    
+    const canClaim = bounty.status === 'accepted' && 
+                     bounty.developer_address && 
+                     user.xrp_address === bounty.developer_address;
+    
+    return canAccept || canClaim;
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="card">
+          <div className="space-y-4">
+            <SkeletonText className="h-7 w-2/3" />
+            <SkeletonText className="h-5 w-40" />
+            <SkeletonText className="h-4 w-full" />
+            <SkeletonText className="h-4 w-5/6" />
+          </div>
+        </div>
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="card">
+            <SkeletonText className="h-5 w-32 mb-4" />
+            <div className="space-y-3">
+              <SkeletonText className="h-4 w-3/4" />
+              <SkeletonText className="h-4 w-1/2" />
+              <SkeletonText className="h-4 w-2/3" />
+              <SkeletonText className="h-4 w-1/3" />
+            </div>
+          </div>
+          <div className="card">
+            <SkeletonText className="h-5 w-40 mb-4" />
+            <div className="space-y-3">
+              <SkeletonText className="h-4 w-2/3" />
+              <SkeletonText className="h-4 w-1/2" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!bounty) {
     return (
-      <div className="text-center py-12">
-        <ExclamationTriangleIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-white mb-2">Bounty not found</h3>
-        <p className="text-gray-400">The bounty you're looking for doesn't exist.</p>
-      </div>
+      <motion.div 
+        className="text-center py-12"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+      >
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.2, type: "spring", stiffness: 300, damping: 20 }}
+        >
+          <ExclamationTriangleIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+        </motion.div>
+        <motion.h3 
+          className="text-lg font-medium text-white mb-2"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+        >
+          Bounty not found
+        </motion.h3>
+        <motion.p 
+          className="text-gray-400"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+        >
+          The bounty you're looking for doesn't exist.
+        </motion.p>
+      </motion.div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <button
+      <motion.div 
+      className="max-w-4xl mx-auto space-y-6"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      layout
+    >
+      <motion.div 
+        className="flex items-center justify-between"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1, duration: 0.3, ease: "easeOut" }}
+      >
+        <motion.button
           onClick={() => navigate('/bounties')}
           className="flex items-center text-gray-400 hover:text-white transition-colors"
+          whileHover={{ x: -3 }}
+          whileTap={{ scale: 0.98 }}
+          transition={{ type: "spring", stiffness: 400, damping: 25 }}
         >
           <ArrowLeftIcon className="h-5 w-5 mr-1" />
           Back to Bounties
-        </button>
-        {getStatusBadge(bounty.status)}
-      </div>
+        </motion.button>
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.2, type: "spring", stiffness: 300, damping: 20 }}
+        >
+          {getStatusBadge(bounty.status)}
+        </motion.div>
+      </motion.div>
 
-      {/* Error Message */}
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg flex items-center">
-          <ExclamationTriangleIcon className="h-5 w-5 mr-2" />
-          {error}
+        <div className="text-sm text-neutral-400">
+          <a href="/bounties" className="hover:text-neutral-200">Bounties</a>
+          <span className="mx-2">/</span>
+          <a href={bounty.github_issue_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">
+            {extractRepoName(bounty.github_issue_url)}
+          </a>
+          <span className="mx-2">/</span>
+          <span className="text-neutral-300">Issue #{bounty.id}</span>
         </div>
-      )}
 
-      {/* Bounty Details */}
-      <div className="card">
+      <AnimatePresence mode="wait">
+        {error && (
+          <motion.div 
+            key="error-message"
+            className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg flex items-center"
+            initial={{ opacity: 0, y: -10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.98 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+          >
+            <ExclamationTriangleIcon className="h-5 w-5 mr-2" />
+            {error}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <motion.div 
+        key="bounty-details"
+        className="card"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2, duration: 0.3, ease: "easeOut" }}
+        whileHover={{ y: -1 }}
+        layout
+      >
         <div className="space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+          >
+            <motion.h1 
+              className="text-3xl font-bold text-white mb-2"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.4, duration: 0.3, ease: "easeOut" }}
+            >
               {bounty.bounty_name}
-            </h1>
-            <div className="flex items-center text-gray-300">
+            </motion.h1>
+            <motion.div 
+              className="flex items-center text-gray-300"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.5, duration: 0.3, ease: "easeOut" }}
+            >
               <CurrencyDollarIcon className="h-5 w-5 mr-1" />
               <span className="text-xl font-semibold text-warning-400">{bounty.amount} XRP</span>
-            </div>
-          </div>
+              {bounty.escrow_id && (
+                <span className="ml-3 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-success-500/20 text-success-400 border border-success-500/30">
+                  <CheckCircleIcon className="h-4 w-4 mr-1" />
+                  Escrow Verified
+                </span>
+              )}
+            </motion.div>
+            
+            {bounty.description && (
+              <motion.div 
+                className="mt-4"
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.6, duration: 0.3, ease: "easeOut" }}
+              >
+                <h3 className="text-lg font-semibold text-white mb-2">Description</h3>
+                <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">
+                  {bounty.description}
+                </p>
+              </motion.div>
+            )}
+          </motion.div>
 
           <div className="grid md:grid-cols-2 gap-6">
             <div>
@@ -208,22 +373,30 @@ const BountyDetail: React.FC = () => {
                 
                 <div>
                   <label className="text-sm font-medium text-gray-400">Funder Address</label>
-                  <div className="flex items-center mt-1">
+                  <div className="flex items-center mt-1 gap-2">
                     <UserIcon className="h-4 w-4 text-gray-400 mr-2" />
-                    <span className="font-mono text-sm text-gray-300">
-                      {bounty.funder_address.slice(0, 8)}...{bounty.funder_address.slice(-8)}
-                    </span>
+                    <span className="font-mono text-sm text-gray-300">{bounty.funder_address.slice(0, 8)}...{bounty.funder_address.slice(-8)}</span>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(bounty.funder_address)}
+                      className="text-xs text-primary-400 hover:text-primary-300"
+                    >
+                      Copy
+                    </button>
                   </div>
                 </div>
 
                 {bounty.developer_address && (
                   <div>
                     <label className="text-sm font-medium text-gray-400">Developer Address</label>
-                    <div className="flex items-center mt-1">
+                    <div className="flex items-center mt-1 gap-2">
                       <UserIcon className="h-4 w-4 text-gray-400 mr-2" />
-                      <span className="font-mono text-sm text-gray-300">
-                        {bounty.developer_address.slice(0, 8)}...{bounty.developer_address.slice(-8)}
-                      </span>
+                      <span className="font-mono text-sm text-gray-300">{bounty.developer_address.slice(0, 8)}...{bounty.developer_address.slice(-8)}</span>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(bounty.developer_address!)}
+                        className="text-xs text-primary-400 hover:text-primary-300"
+                      >
+                        Copy
+                      </button>
                     </div>
                   </div>
                 )}
@@ -261,37 +434,103 @@ const BountyDetail: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
-      {/* Action Buttons */}
-      {user && (
-        <div className="card">
-          <h3 className="text-lg font-semibold text-white mb-4">Actions</h3>
-          
-          {bounty.status === 'open' && user.id !== bounty.funder_id && (
-            <button
-              onClick={() => setShowAcceptForm(true)}
-              className="btn-success"
-            >
-              Accept Bounty
-            </button>
-          )}
+      <AnimatePresence mode="wait">
+        {hasAvailableActions() && (
+          <motion.div 
+            key="action-buttons"
+            className="card"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ delay: 0.3, duration: 0.3, ease: "easeOut" }}
+          >
+            <h3 className="text-lg font-semibold text-white mb-4">Actions</h3>
+            
+            {bounty.status === 'open' && user && user.id !== bounty.funder_id && (
+              <motion.button
+                onClick={() => setShowAcceptForm(true)}
+                className="btn-success"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              >
+                Accept Bounty
+              </motion.button>
+            )}
 
-          {bounty.status === 'accepted' && bounty.developer_address && (
-            <button
-              onClick={() => setShowClaimForm(true)}
-              className="btn-warning"
-            >
-              Claim Bounty
-            </button>
-          )}
+            {bounty.status === 'accepted' && bounty.developer_address && (
+              <>
+                {developerSecretKey && (
+                  <motion.div 
+                    className="mb-4 p-4 bg-warning-500/10 border border-warning-500/20 rounded-lg"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1, duration: 0.3 }}
+                  >
+                    <h4 className="text-sm font-medium text-warning-400 mb-2">Developer Secret Key</h4>
+                    <p className="text-xs text-gray-400 mb-2">
+                      Include this secret key in your merge request to verify you completed this bounty:
+                    </p>
+                    <div className="flex items-center space-x-2">
+                      <code className="text-sm bg-dark-700 px-2 py-1 rounded text-warning-300 font-mono break-all">
+                        {developerSecretKey}
+                      </code>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(developerSecretKey)}
+                        className="text-xs text-primary-400 hover:text-primary-300"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+                {user && user.xrp_address === bounty.developer_address && (
+                  <motion.button
+                    onClick={() => setShowClaimForm(true)}
+                    className="btn-warning"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  >
+                    Claim Bounty
+                  </motion.button>
+                )}
+              </>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {hasAvailableActions() && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-neutral-950/80 backdrop-blur-md border-t border-neutral-800/50 py-3">
+          <div className="max-w-4xl mx-auto px-4 flex items-center justify-end gap-3">
+            {bounty.status === 'open' && user && user.id !== bounty.funder_id && (
+              <button onClick={() => setShowAcceptForm(true)} className="btn-success">Accept Bounty</button>
+            )}
+            {bounty.status === 'accepted' && bounty.developer_address && user && user.xrp_address === bounty.developer_address && (
+              <button onClick={() => setShowClaimForm(true)} className="btn-warning">Claim Bounty</button>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Accept Bounty Modal */}
-      {showAcceptForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-dark-800 rounded-lg p-6 max-w-md w-full border border-dark-700">
+      <AnimatePresence>
+        {showAcceptForm && (
+          <motion.div 
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div 
+              className="modal-content"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            >
             <h3 className="text-lg font-semibold text-white mb-4">Accept Bounty</h3>
             <form onSubmit={handleAcceptBounty} className="space-y-4">
               <div>
@@ -325,14 +564,26 @@ const BountyDetail: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Claim Bounty Modal */}
-      {showClaimForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-dark-800 rounded-lg p-6 max-w-md w-full border border-dark-700">
+      <AnimatePresence>
+        {showClaimForm && (
+          <motion.div 
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div 
+              className="modal-content"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            >
             <h3 className="text-lg font-semibold text-white mb-4">Claim Bounty</h3>
             <form onSubmit={handleClaimBounty} className="space-y-4">
               <div>
@@ -347,6 +598,14 @@ const BountyDetail: React.FC = () => {
                   className="input-field"
                   placeholder="https://github.com/username/repo/pull/123"
                 />
+              </div>
+              <div>
+                <p className="text-sm text-gray-300 mb-1">
+                  Make sure your merge request includes the developer secret key that was provided when you accepted this bounty.
+                </p>
+                <p className="text-xs text-gray-500">
+                  The secret key should be included in your merge request title or description for verification.
+                </p>
               </div>
               <div className="flex gap-3">
                 <button
@@ -365,10 +624,11 @@ const BountyDetail: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-    </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 };
 

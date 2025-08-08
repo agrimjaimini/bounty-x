@@ -1,16 +1,40 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+/* DMSans Font */
+@font-face {
+  font-family: 'DMSans';
+  src: url('./assets/6776eb55e2ef647b12dc1813_DMSans-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   html {
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'DMSans', 'Inter', system-ui, sans-serif;
+    /* Prevent layout shift when vertical scrollbar appears/disappears */
+    scrollbar-gutter: stable;
+    /* Fallback to always reserve vertical scrollbar space */
+    overflow-y: scroll;
+  }
+  
+  /* Respect user's motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
   
   body {
-    @apply bg-dark-950 text-gray-100 transition-colors duration-200;
+    @apply bg-neutral-975 text-neutral-50 transition-colors duration-200;
   }
 
   /* Custom scrollbar for dark mode */
@@ -19,76 +43,141 @@
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-dark-800;
+    @apply bg-neutral-900;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-dark-600 rounded-full;
+    @apply bg-neutral-700 rounded-full;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-dark-500;
+    @apply bg-neutral-600;
   }
 }
 
 @layer components {
-  /* Modern button styles */
+  /* Modern button styles - Consistent alignment and spacing */
   .btn-primary {
-    @apply bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white font-medium py-3 px-6 rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-dark-950 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5;
+    @apply inline-flex items-center justify-center bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-3 px-6 rounded-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-neutral-975 transform hover:-translate-y-0.5;
+    min-height: 48px;
+    line-height: 1.5;
   }
   
   .btn-secondary {
-    @apply bg-dark-800 hover:bg-dark-700 text-gray-100 font-medium py-3 px-6 rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-dark-600 focus:ring-offset-2 focus:ring-offset-dark-950 border border-dark-600 hover:border-dark-500 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5;
+    @apply inline-flex items-center justify-center bg-neutral-900 hover:bg-neutral-800 text-neutral-100 font-medium py-3 px-6 rounded-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-neutral-600 focus:ring-offset-2 focus:ring-offset-neutral-975 border border-neutral-700 hover:border-neutral-600 transform hover:-translate-y-0.5;
+    min-height: 48px;
+    line-height: 1.5;
   }
   
   .btn-success {
-    @apply bg-gradient-to-r from-success-600 to-success-700 hover:from-success-700 hover:to-success-800 text-white font-medium py-3 px-6 rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-success-500 focus:ring-offset-2 focus:ring-offset-dark-950 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5;
+    @apply inline-flex items-center justify-center bg-gradient-to-r from-success-500 to-success-600 hover:from-success-600 hover:to-success-700 text-white font-medium py-3 px-6 rounded-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-success-500 focus:ring-offset-2 focus:ring-offset-neutral-975 transform hover:-translate-y-0.5;
+    min-height: 48px;
+    line-height: 1.5;
   }
   
   .btn-warning {
-    @apply bg-gradient-to-r from-warning-600 to-warning-700 hover:from-warning-700 hover:to-warning-800 text-white font-medium py-3 px-6 rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-warning-500 focus:ring-offset-2 focus:ring-offset-dark-950 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5;
+    @apply inline-flex items-center justify-center bg-gradient-to-r from-warning-500 to-warning-600 hover:from-warning-600 hover:to-warning-600 text-white font-medium py-3 px-6 rounded-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-warning-500 focus:ring-offset-2 focus:ring-offset-neutral-975 transform hover:-translate-y-0.5;
+    min-height: 48px;
+    line-height: 1.5;
   }
 
   .btn-accent {
-    @apply bg-gradient-to-r from-accent-600 to-accent-700 hover:from-accent-700 hover:to-accent-800 text-white font-medium py-3 px-6 rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2 focus:ring-offset-dark-950 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5;
+    @apply inline-flex items-center justify-center bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-3 px-6 rounded-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-neutral-975 transform hover:-translate-y-0.5;
+    min-height: 48px;
+    line-height: 1.5;
+  }
+
+  /* Large button variant */
+  .btn-lg {
+    @apply py-4 px-8 text-lg;
+    min-height: 56px;
   }
   
-  /* Modern card styles */
+  /* Modern card styles - Consistent spacing and alignment */
   .card {
-    @apply bg-dark-900/50 backdrop-blur-sm rounded-2xl border border-dark-700/50 p-6 shadow-2xl hover:shadow-2xl hover:shadow-primary-500/20 transition-all duration-300 hover:border-dark-600/50;
+    @apply bg-neutral-950/60 backdrop-blur-sm rounded-2xl border border-neutral-800/50 p-8 shadow-xl transition-all duration-300 hover:border-neutral-700/50;
   }
 
   .card-hover {
-    @apply card hover:bg-dark-800/50 hover:scale-[1.02] cursor-pointer;
+    @apply card hover:bg-neutral-900/60 hover:scale-[1.02] cursor-pointer;
+  }
+
+  /* Compact card variant */
+  .card-compact {
+    @apply bg-neutral-950/60 backdrop-blur-sm rounded-2xl border border-neutral-800/50 p-6 shadow-xl transition-all duration-300 hover:border-neutral-700/50;
   }
   
-  /* Modern input styles */
+  /* Modern input styles - Consistent with buttons */
   .input-field {
-    @apply w-full px-4 py-3 bg-dark-800/50 border border-dark-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 text-gray-100 placeholder-gray-400 backdrop-blur-sm;
+    @apply w-full px-4 py-3 bg-neutral-900/60 border border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300 text-neutral-100 backdrop-blur-sm;
+    min-height: 48px;
+    line-height: 1.5;
+  }
+
+  .input-field::placeholder {
+    @apply text-neutral-500/60;
+    font-style: italic;
   }
 
   .input-field:focus {
-    @apply bg-dark-800 border-primary-500 shadow-lg shadow-primary-500/20;
+    @apply bg-neutral-900 border-blue-500;
+  }
+
+  .input-field:focus::placeholder {
+    @apply text-neutral-500/40;
   }
 
   /* Glass morphism effect */
   .glass {
-    @apply bg-dark-900/20 backdrop-blur-md border border-dark-700/30;
+    @apply bg-neutral-950/20 backdrop-blur-md border border-neutral-800/30;
   }
 
-  /* Gradient text */
+  /* Main title text with DMSans */
+  .title-text {
+    @apply font-sans font-semibold tracking-wide;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "liga" 1, "calt" 1;
+    letter-spacing: 0.02em;
+    font-weight: 600;
+  }
+
+  /* Large text with DMSans */
+  .large-text {
+    @apply font-sans font-medium tracking-wide;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "liga" 1, "calt" 1;
+    letter-spacing: 0.01em;
+    font-weight: 500;
+  }
+
+  /* Clean title text */
   .gradient-text {
-    @apply bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent;
+    @apply text-white font-sans font-semibold tracking-wide;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "liga" 1, "calt" 1;
+    letter-spacing: 0.02em;
+    font-weight: 600;
   }
 
-  /* Static gradient background */
+  /* XRPL-themed gradient background */
   .animated-bg {
-    @apply bg-gradient-to-br from-dark-950 via-dark-900 to-dark-800;
+    @apply bg-gradient-to-br from-neutral-975 via-neutral-950 to-neutral-900;
+    background-image: 
+      radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+      radial-gradient(circle at 40% 40%, rgba(59, 130, 246, 0.04) 0%, transparent 50%);
   }
 
-  /* Status badges */
+  /* Status badges - Consistent styling */
   .badge {
-    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium;
+    @apply inline-flex items-center justify-center px-3 py-1.5 rounded-full text-xs font-medium;
+    min-height: 24px;
   }
 
   .badge-success {
@@ -100,87 +189,158 @@
   }
 
   .badge-info {
-    @apply badge bg-primary-500/20 text-primary-400 border border-primary-500/30;
+    @apply badge bg-blue-500/20 text-blue-400 border border-blue-500/30;
   }
 
-  /* Navigation styles */
+  .badge-error {
+    @apply badge bg-error-500/20 text-error-400 border border-error-500/30;
+  }
+
+  /* Navigation styles - Consistent with buttons */
   .nav-link {
-    @apply text-gray-300 hover:text-white px-3 py-2 rounded-lg transition-all duration-200 hover:bg-dark-800/50;
+    @apply inline-flex items-center justify-center text-neutral-300 hover:text-white px-4 py-2.5 rounded-xl transition-all duration-300 hover:bg-neutral-800/50;
+    min-height: 40px;
   }
 
   .nav-link-active {
-    @apply text-white bg-primary-500/20 border border-primary-500/30;
+    @apply text-white bg-blue-500/20 border border-blue-500/30;
   }
 
-  /* Table styles */
+  /* Table styles - Consistent spacing */
   .table-dark {
-    @apply bg-dark-900/50 border border-dark-700/50 rounded-xl overflow-hidden;
+    @apply bg-neutral-950/60 border border-neutral-800/50 rounded-2xl overflow-hidden;
   }
 
   .table-dark th {
-    @apply bg-dark-800/50 text-gray-300 font-medium px-6 py-4 text-left;
+    @apply bg-neutral-900/60 text-neutral-300 font-medium px-6 py-4 text-left;
   }
 
   .table-dark td {
-    @apply px-6 py-4 border-t border-dark-700/30 text-gray-200;
+    @apply px-6 py-4 border-t border-neutral-800/30 text-neutral-200;
   }
 
   .table-dark tr:hover {
-    @apply bg-dark-800/30;
+    @apply bg-neutral-900/40;
   }
 
-  /* Modal styles */
+  /* Modal styles - Consistent with cards */
   .modal-overlay {
     @apply fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50;
   }
 
   .modal-content {
-    @apply bg-dark-900/95 backdrop-blur-md border border-dark-700/50 rounded-2xl p-6 max-w-md w-full shadow-2xl;
+    @apply bg-neutral-950/95 backdrop-blur-md border border-neutral-800/50 rounded-2xl p-8 max-w-md w-full shadow-2xl;
   }
 
-  /* Loading spinner */
+  /* Loading spinner - Consistent with theme */
   .spinner {
-    @apply animate-spin rounded-full border-2 border-dark-600 border-t-primary-500;
+    @apply animate-spin rounded-full border-2 border-neutral-700 border-t-blue-500;
   }
 
   /* Custom animations */
   .fade-in {
     @apply animate-fade-in;
+    will-change: opacity;
   }
 
   .slide-up {
     @apply animate-slide-up;
+    will-change: transform, opacity;
   }
 
-  /* Text color utilities for dark mode */
+  /* Orbit utility for small particles around logo */
+  .orbit {
+    position: absolute;
+    width: var(--distance);
+    height: var(--distance);
+    margin-left: calc(var(--distance) / -2);
+    margin-top: calc(var(--distance) / -2);
+    animation: orbit var(--duration) linear infinite;
+    transform-origin: center center;
+  }
+
+  @keyframes orbit {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  /* Text color utilities for dark mode - Consistent palette */
   .text-primary {
-    @apply text-gray-100;
+    @apply text-neutral-100;
   }
 
   .text-secondary {
-    @apply text-gray-300;
+    @apply text-neutral-300;
   }
 
   .text-muted {
-    @apply text-gray-400;
+    @apply text-neutral-400;
   }
 
   .text-subtle {
-    @apply text-gray-500;
+    @apply text-neutral-500;
   }
 
-  /* Form label styles */
+  /* Form label styles - Consistent with inputs */
   .form-label {
-    @apply block text-sm font-medium text-gray-300 mb-2;
+    @apply block text-sm font-medium text-neutral-300 mb-3;
   }
 
-  /* Error message styles */
+  /* Error message styles - Consistent with cards */
   .error-message {
-    @apply bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl flex items-center;
+    @apply bg-error-500/10 border border-error-500/30 text-error-400 px-4 py-3 rounded-xl flex items-center;
   }
 
-  /* Success message styles */
+  /* Success message styles - Consistent with cards */
   .success-message {
     @apply bg-success-500/10 border border-success-500/30 text-success-400 px-4 py-3 rounded-xl flex items-center;
+  }
+
+  /* Info message styles - Consistent with cards */
+  .info-message {
+    @apply bg-blue-500/10 border border-blue-500/30 text-blue-400 px-4 py-3 rounded-xl flex items-center;
+  }
+
+  /* Performance optimizations */
+  .motion-safe {
+    @apply motion-safe:animate-fade-in motion-safe:animate-slide-up;
+  }
+
+  .motion-reduce {
+    @apply motion-reduce:animate-none motion-reduce:transition-none;
+  }
+
+  /* Grid layouts - Consistent spacing */
+  .grid-equal {
+    @apply grid gap-6;
+  }
+
+  .grid-equal-2 {
+    @apply grid grid-cols-1 md:grid-cols-2 gap-6;
+  }
+
+  .grid-equal-3 {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6;
+  }
+
+  .grid-equal-4 {
+    @apply grid grid-cols-2 md:grid-cols-4 gap-6;
+  }
+
+  /* Flex layouts - Consistent alignment */
+  .flex-center {
+    @apply flex items-center justify-center;
+  }
+
+  .flex-between {
+    @apply flex items-center justify-between;
+  }
+
+  .flex-start {
+    @apply flex items-center justify-start;
+  }
+
+  .flex-end {
+    @apply flex items-center justify-end;
   }
 }

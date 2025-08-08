@@ -3,12 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { bountyApi } from '../services/api';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { useToast } from '../components/ui/Toast';
 
 const CreateBounty: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [formData, setFormData] = useState({
     bounty_name: '',
+    description: '',
     github_issue_url: '',
     amount: '',
     finish_after: '86400', // Default 24 hours
@@ -16,7 +19,7 @@ const CreateBounty: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
@@ -27,6 +30,10 @@ const CreateBounty: React.FC = () => {
   const validateForm = () => {
     if (!formData.bounty_name.trim()) {
       setError('Bounty name is required');
+      return false;
+    }
+    if (!formData.description.trim()) {
+      setError('Description is required');
       return false;
     }
     if (!formData.github_issue_url.trim()) {
@@ -48,6 +55,7 @@ const CreateBounty: React.FC = () => {
     e.preventDefault();
     
     if (!validateForm()) {
+      showToast('Please fix the validation errors', 'error');
       return;
     }
 
@@ -58,15 +66,17 @@ const CreateBounty: React.FC = () => {
       await bountyApi.createBounty({
         funder_id: user!.id,
         bounty_name: formData.bounty_name.trim(),
+        description: formData.description.trim(),
         github_issue_url: formData.github_issue_url.trim(),
         amount: parseFloat(formData.amount),
         finish_after: parseInt(formData.finish_after),
       });
-      
+      showToast('Bounty created and escrow initiated', 'success');
       navigate('/bounties');
     } catch (error: any) {
       const errorMessage = error.response?.data?.detail;
       setError(typeof errorMessage === 'string' ? errorMessage : 'Failed to create bounty. Please try again.');
+      showToast('Failed to create bounty', 'error');
     } finally {
       setLoading(false);
     }
@@ -98,6 +108,25 @@ const CreateBounty: React.FC = () => {
           />
           <p className="mt-2 text-sm text-gray-400">
             Choose a clear, descriptive name for your bounty
+          </p>
+        </div>
+
+        <div>
+          <label htmlFor="description" className="form-label">
+            Description *
+          </label>
+          <textarea
+            id="description"
+            name="description"
+            required
+            rows={4}
+            value={formData.description}
+            onChange={handleChange}
+            className="input-field"
+            placeholder="Provide a detailed description of what needs to be done, requirements, and any specific instructions for developers..."
+          />
+          <p className="mt-2 text-sm text-gray-400">
+            Detailed description of the work to be completed
           </p>
         </div>
 
@@ -195,13 +224,16 @@ const CreateBounty: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="btn-primary flex-1"
+            className="btn-primary flex-1 relative overflow-hidden"
           >
             {loading ? (
-              <div className="flex items-center justify-center">
-                <div className="spinner h-5 w-5 mr-2"></div>
-                Creating...
-              </div>
+              <>
+                <div className="flex items-center justify-center">
+                  <div className="spinner h-5 w-5 mr-2"></div>
+                  <span>Funding...</span>
+                </div>
+                <div className="absolute bottom-0 left-0 h-1 bg-white/20 animate-pulse" style={{ width: '100%' }}></div>
+              </>
             ) : (
               'Create Bounty'
             )}

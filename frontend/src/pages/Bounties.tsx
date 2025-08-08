@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { bountyApi } from '../services/api';
 import { Bounty } from '../types/api';
 import { 
@@ -10,14 +10,21 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon 
 } from '@heroicons/react/24/outline';
+import { CodeBracketIcon } from '@heroicons/react/24/outline';
+import { useToast } from '../components/ui/Toast';
+import { SkeletonText } from '../components/ui/Skeleton';
 
 const Bounties: React.FC = () => {
   const [bounties, setBounties] = useState<Bounty[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('created_at');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const [searchTerm, setSearchTerm] = useState(params.get('q') ?? '');
+  const [statusFilter, setStatusFilter] = useState(params.get('status') ?? 'all');
+  const [sortBy, setSortBy] = useState(params.get('sort') ?? 'amount');
+  const { showToast } = useToast();
 
   useEffect(() => {
     fetchBounties();
@@ -44,10 +51,14 @@ const Bounties: React.FC = () => {
 
     try {
       setLoading(true);
+      const next = new URLSearchParams(location.search);
+      next.set('q', searchTerm);
+      navigate({ pathname: '/bounties', search: next.toString() }, { replace: true });
       const data = await bountyApi.searchBounties(searchTerm);
       setBounties(data);
     } catch (error) {
       setError('Search failed');
+      showToast('Search failed', 'error');
       console.error('Error searching bounties:', error);
     } finally {
       setLoading(false);
@@ -56,6 +67,9 @@ const Bounties: React.FC = () => {
 
   const handleStatusFilter = async (status: string) => {
     setStatusFilter(status);
+    const next = new URLSearchParams(location.search);
+    next.set('status', status);
+    navigate({ pathname: '/bounties', search: next.toString() }, { replace: true });
     
     if (status === 'all') {
       fetchBounties();
@@ -111,13 +125,20 @@ const Bounties: React.FC = () => {
   };
 
   const formatBountyName = (name: string) => {
-    // Clean up the bounty name for better readability
     return name
-      .replace(/_/g, ' ')  // Replace underscores with spaces
-      .replace(/-/g, ' ')  // Replace hyphens with spaces
+      .replace(/_/g, ' ')
+      .replace(/-/g, ' ')
       .split(' ')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
+  };
+
+  const extractRepoName = (githubUrl: string) => {
+    const match = githubUrl.match(/github\.com\/([^/]+\/[^/]+)/);
+    if (match) {
+      return match[1];
+    }
+    return 'Unknown Repository';
   };
 
   const filteredAndSortedBounties = bounties
@@ -136,13 +157,56 @@ const Bounties: React.FC = () => {
       }
     });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-64">
-        <div className="spinner h-12 w-12"></div>
-      </div>
-    );
-  }
+  const Segmented = (
+    <div className="inline-flex rounded-xl border border-neutral-700 overflow-hidden h-12">
+      {[
+        { key: 'all', label: 'All' },
+        { key: 'open', label: 'Open' },
+        { key: 'accepted', label: 'In Progress' },
+        { key: 'claimed', label: 'Completed' },
+      ].map(item => (
+        <button
+          key={item.key}
+          onClick={() => handleStatusFilter(item.key)}
+          className={`px-4 text-sm transition-colors h-full ${
+            statusFilter === item.key
+              ? 'bg-blue-500/20 text-white border-r border-neutral-700'
+              : 'text-neutral-300 hover:bg-neutral-800/50 border-r border-neutral-700'
+          }`}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const handleSort = (value: string) => {
+    setSortBy(value);
+    const next = new URLSearchParams(location.search);
+    next.set('sort', value);
+    navigate({ pathname: '/bounties', search: next.toString() }, { replace: true });
+  };
+
+  const SortSegmented = (
+    <div className="inline-flex rounded-xl border border-neutral-700 overflow-hidden h-12">
+      {[
+        { key: 'amount', label: 'Highest Amount' },
+        { key: 'created_at', label: 'Newest' },
+      ].map(item => (
+        <button
+          key={item.key}
+          onClick={() => handleSort(item.key)}
+          className={`px-4 text-sm transition-colors h-full ${
+            sortBy === item.key
+              ? 'bg-blue-500/20 text-white border-r border-neutral-700'
+              : 'text-neutral-300 hover:bg-neutral-800/50 border-r border-neutral-700'
+          }`}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="space-y-6 fade-in">
@@ -158,10 +222,8 @@ const Bounties: React.FC = () => {
         </Link>
       </div>
 
-      {/* Search and Filters */}
       <div className="card">
         <div className="flex flex-col lg:flex-row gap-4">
-          {/* Search */}
           <div className="flex-1">
             <div className="relative">
               <input
@@ -181,37 +243,18 @@ const Bounties: React.FC = () => {
             </div>
           </div>
 
-          {/* Status Filter */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-3">
             <FunnelIcon className="h-5 w-5 text-gray-400" />
-            <select
-              value={statusFilter}
-              onChange={(e) => handleStatusFilter(e.target.value)}
-              className="input-field w-auto"
-            >
-              <option value="all">All Status</option>
-              <option value="open">Open</option>
-              <option value="accepted">In Progress</option>
-              <option value="claimed">Completed</option>
-            </select>
+            {Segmented}
           </div>
 
-          {/* Sort */}
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-300">Sort by:</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="input-field w-auto"
-            >
-              <option value="created_at">Newest</option>
-              <option value="amount">Highest Amount</option>
-            </select>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-300">Sort:</span>
+            {SortSegmented}
           </div>
         </div>
       </div>
 
-      {/* Error Message */}
       {error && (
         <div className="error-message">
           <ExclamationTriangleIcon className="h-5 w-5 mr-2" />
@@ -219,8 +262,18 @@ const Bounties: React.FC = () => {
         </div>
       )}
 
-      {/* Bounties Grid */}
-      {filteredAndSortedBounties.length === 0 ? (
+      {loading ? (
+        <div className="grid gap-6 md:grid-cols-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="card-compact">
+              <SkeletonText className="h-5 w-3/4 mb-4" />
+              <SkeletonText className="h-4 w-1/2 mb-3" />
+              <SkeletonText className="h-4 w-full mb-3" />
+              <SkeletonText className="h-4 w-2/3" />
+            </div>
+          ))}
+        </div>
+      ) : filteredAndSortedBounties.length === 0 ? (
         <div className="text-center py-12">
           <CurrencyDollarIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-white mb-2">No bounties found</h3>
@@ -229,7 +282,7 @@ const Bounties: React.FC = () => {
           </p>
         </div>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2">
           {filteredAndSortedBounties.map((bounty) => (
             <Link
               key={bounty.id}
@@ -243,6 +296,25 @@ const Bounties: React.FC = () => {
                   </h3>
                   {getStatusBadge(bounty.status)}
                 </div>
+                
+                <div className="text-sm text-blue-400 font-medium inline-flex items-center gap-2">
+                  <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300">
+                    <CodeBracketIcon className="h-4 w-4 mr-1" />
+                    {extractRepoName(bounty.github_issue_url)}
+                  </span>
+                  {bounty.escrow_id && (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full bg-success-500/10 border border-success-500/20 text-success-400">
+                      <CheckCircleIcon className="h-4 w-4 mr-1" />
+                      Escrowed
+                    </span>
+                  )}
+                </div>
+                
+                {bounty.description && (
+                  <div className="text-sm text-gray-300 line-clamp-3">
+                    {bounty.description}
+                  </div>
+                )}
                 
                 <div className="flex items-center justify-between text-sm text-gray-300">
                   <span className="flex items-center">

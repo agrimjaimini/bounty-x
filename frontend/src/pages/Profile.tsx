@@ -11,6 +11,7 @@ import {
   ExclamationTriangleIcon,
   WalletIcon
 } from '@heroicons/react/24/outline';
+import { SkeletonText, SkeletonCircle } from '../components/ui/Skeleton';
 
 const Profile: React.FC = () => {
   const { user } = useAuth();
@@ -84,15 +85,39 @@ const Profile: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <div className="spinner h-12 w-12"></div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <div className="card">
+          <div className="flex items-center space-x-6">
+            <SkeletonCircle className="h-20 w-20" />
+            <div className="flex-1">
+              <SkeletonText className="h-7 w-48 mb-2" />
+              <SkeletonText className="h-4 w-80" />
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="card-compact">
+              <SkeletonCircle className="h-12 w-12 mb-4" />
+              <SkeletonText className="h-7 w-16 mb-2" />
+              <SkeletonText className="h-4 w-24" />
+            </div>
+          ))}
+        </div>
+        <div className="card">
+          <SkeletonText className="h-6 w-48 mb-6" />
+          <div className="space-y-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonText key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Header Section */}
       <div className="card">
         <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-6">
           <div className="relative">
@@ -113,7 +138,6 @@ const Profile: React.FC = () => {
         </div>
       </div>
 
-      {/* Error Message */}
       {error && (
         <div className="error-message">
           <ExclamationTriangleIcon className="h-5 w-5 mr-2" />
@@ -121,10 +145,8 @@ const Profile: React.FC = () => {
         </div>
       )}
 
-      {/* User Statistics */}
       {user && <UserStats user={user} />}
 
-      {/* Bounty History */}
       <div className="card">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold gradient-text">Your Bounties</h2>
@@ -144,37 +166,37 @@ const Profile: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-dark-700/50">
+          <div className="table-dark overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-dark-700/50">
-                <thead className="bg-dark-800/50">
+              <table className="min-w-full">
+                <thead>
                   <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-neutral-400 uppercase tracking-wider">
                       Bounty
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-neutral-400 uppercase tracking-wider">
                       Amount
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-neutral-400 uppercase tracking-wider">
                       Status
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-neutral-400 uppercase tracking-wider">
                       Created
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-neutral-400 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-dark-900/30 divide-y divide-dark-700/30">
+                <tbody>
                   {userBounties.map((bounty) => (
-                    <tr key={bounty.id} className="hover:bg-dark-800/30 transition-colors duration-200">
+                    <tr key={bounty.id} className="hover:bg-neutral-900/40 transition-colors duration-200">
                       <td className="px-6 py-4">
                         <div>
-                          <div className="text-sm font-semibold text-gray-200 mb-1">
+                          <div className="text-sm font-semibold text-neutral-200 mb-1">
                             {formatBountyName(bounty.bounty_name)}
                           </div>
-                          <div className="text-sm text-gray-500 truncate max-w-xs">
+                          <div className="text-sm text-neutral-500 truncate max-w-xs">
                             {bounty.github_issue_url}
                           </div>
                         </div>
@@ -187,14 +209,11 @@ const Profile: React.FC = () => {
                       <td className="px-6 py-4">
                         {getStatusBadge(bounty.status)}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-400">
+                      <td className="px-6 py-4 text-sm text-neutral-400">
                         {formatDate(bounty.created_at)}
                       </td>
                       <td className="px-6 py-4">
-                        <a
-                          href={`/bounties/${bounty.id}`}
-                          className="text-primary-400 hover:text-primary-300 font-medium transition-colors duration-200"
-                        >
+                        <a href={`/bounties/${bounty.id}`} className="text-primary-400 hover:text-primary-300 font-medium transition-colors duration-200">
                           View Details →
                         </a>
                       </td>
@@ -207,7 +226,6 @@ const Profile: React.FC = () => {
         )}
       </div>
 
-      {/* Wallet Information */}
       <div className="card">
         <div className="flex items-center space-x-3 mb-6">
           <div className="h-8 w-8 rounded-full bg-primary-500/20 flex items-center justify-center">

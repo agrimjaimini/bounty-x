@@ -2,6 +2,7 @@ export interface Bounty {
   id: number;
   funder_id: number;
   bounty_name: string;
+  description: string | null;
   github_issue_url: string;
   funder_address: string;
   developer_address: string | null;
@@ -10,6 +11,7 @@ export interface Bounty {
   escrow_sequence: number | null;
   escrow_condition: string | null;
   escrow_fulfillment: string | null;
+  developer_secret_key: string | null;
   status: 'open' | 'accepted' | 'claimed' | 'cancelled';
   created_at: string;
   updated_at: string;
@@ -40,6 +42,7 @@ export interface UserLogin {
 export interface BountyCreate {
   funder_id: number;
   bounty_name: string;
+  description: string;
   github_issue_url: string;
   amount: number;
   finish_after: number;

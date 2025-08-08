@@ -1,12 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { User } from '../types/api';
+import { userApi } from '../services/api';
 import { 
   TrophyIcon,
   CheckCircleIcon,
   CurrencyDollarIcon,
   StarIcon,
   BanknotesIcon,
-  ClockIcon
+  ClockIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline';
 
 interface UserStatsProps {
@@ -14,6 +16,9 @@ interface UserStatsProps {
 }
 
 const UserStats: React.FC<UserStatsProps> = ({ user }) => {
+  const [funding, setFunding] = useState(false);
+  const [fundMessage, setFundMessage] = useState('');
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -24,32 +29,57 @@ const UserStats: React.FC<UserStatsProps> = ({ user }) => {
     });
   };
 
-  const getActivityLevel = () => {
-    const totalBounties = user.bounties_created + user.bounties_accepted;
-    if (totalBounties === 0) return { level: 'Newcomer', color: 'text-gray-400' };
-    if (totalBounties < 5) return { level: 'Active', color: 'text-success-400' };
-    if (totalBounties < 15) return { level: 'Experienced', color: 'text-warning-400' };
-    return { level: 'Veteran', color: 'text-primary-400' };
+  const handleFundWallet = async () => {
+    try {
+      setFunding(true);
+      setFundMessage('');
+      
+      const result = await userApi.fundWallet(user.id);
+      
+      setFundMessage(`Successfully funded! New balance: ${result.balance_xrp} XRP`);
+      
+      // Refresh the page to update the user data after a short delay
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+      
+    } catch (error: any) {
+      console.error('Error funding wallet:', error);
+      
+      // Handle different types of errors
+      if (error.response) {
+        const status = error.response.status;
+        const detail = error.response.data?.detail || 'Unknown error';
+        
+        switch (status) {
+          case 400:
+            setFundMessage(`Invalid request: ${detail}`);
+            break;
+          case 404:
+            setFundMessage('User not found. Please log in again.');
+            break;
+          case 503:
+            setFundMessage('Testnet faucet is currently unavailable. Please try again later.');
+            break;
+          case 500:
+            setFundMessage('Server error. Please try again later.');
+            break;
+          default:
+            setFundMessage(`Error: ${detail}`);
+        }
+      } else if (error.request) {
+        setFundMessage('Network error. Please check your connection and try again.');
+      } else {
+        setFundMessage('An unexpected error occurred. Please try again.');
+      }
+    } finally {
+      setFunding(false);
+    }
   };
-
-  const activityLevel = getActivityLevel();
 
   return (
     <div className="space-y-6">
-      {/* Activity Level */}
-      <div className="card">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-200 mb-1">Activity Level</h3>
-            <p className="text-sm text-gray-400">Based on your bounty activity</p>
-          </div>
-          <div className={`text-2xl font-bold ${activityLevel.color}`}>
-            {activityLevel.level}
-          </div>
-        </div>
-      </div>
-
-      {/* Statistics Grid */}
+      
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="card text-center group hover:scale-105 transition-transform duration-300">
           <div className="flex items-center justify-center mb-4">
@@ -100,7 +130,6 @@ const UserStats: React.FC<UserStatsProps> = ({ user }) => {
         </div>
       </div>
 
-      {/* Current Balance */}
       <div className="card">
         <div className="flex items-center space-x-3 mb-6">
           <div className="h-8 w-8 rounded-full bg-success-500/20 flex items-center justify-center">
@@ -119,10 +148,43 @@ const UserStats: React.FC<UserStatsProps> = ({ user }) => {
               Last updated: {formatDate(user.last_updated)}
             </div>
           </div>
+          
+          <div className="mt-6 pt-6 border-t border-success-500/20">
+            <button
+              onClick={handleFundWallet}
+              disabled={funding}
+              className="w-full bg-gradient-to-r from-primary-500 to-accent-500 hover:from-primary-600 hover:to-accent-600 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 disabled:scale-100 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+            >
+              {funding ? (
+                <>
+                  <div className="spinner h-4 w-4"></div>
+                  <span>Funding...</span>
+                </>
+              ) : (
+                <>
+                  <PlusIcon className="h-4 w-4" />
+                  <span>Add Testnet Funds</span>
+                </>
+              )}
+            </button>
+            
+            {fundMessage && (
+              <div className={`mt-3 text-sm font-medium ${
+                fundMessage.includes('Successfully') 
+                  ? 'text-success-400' 
+                  : 'text-error-400'
+              }`}>
+                {fundMessage}
+              </div>
+            )}
+            
+            <div className="mt-3 text-xs text-gray-500 text-center">
+              Get testnet XRP to create and fund bounties
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Performance Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="card">
           <div className="flex items-center space-x-3 mb-4">
