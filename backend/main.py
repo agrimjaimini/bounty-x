@@ -11,6 +11,7 @@ from typing import List, Optional
 from datetime import datetime, timezone
 import db
 import utils
+from xrpl.utils import datetime_to_ripple_time
 
 app = FastAPI(title="Bounty-X API", description="A decentralized bounty platform")
 
@@ -393,7 +394,26 @@ def claim_bounty(bounty_id: int, claim: BountyClaim):
             }
             
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to fulfill time-based escrow: {str(e)}")
+            error_msg = str(e)
+            # Common case: trying to finish before FinishAfter has passed
+            if "tecNO_PERMISSION" in error_msg or "No permission" in error_msg:
+                finish_after_ripple = None
+                # Attempt to extract the FinishAfter from the escrow create tx
+                if isinstance(escrow_details, dict):
+                    tx_obj = escrow_details.get('tx') if isinstance(escrow_details.get('tx'), dict) else escrow_details
+                    finish_after_ripple = tx_obj.get('FinishAfter') if isinstance(tx_obj, dict) else None
+
+                # Compute current ripple time to help callers understand remaining wait
+                now_ripple = datetime_to_ripple_time(datetime.now())
+                remaining = (finish_after_ripple - now_ripple) if isinstance(finish_after_ripple, int) else None
+
+                human_hint = "Escrow cannot be finished yet. Please wait until the FinishAfter time."
+                if isinstance(remaining, int) and remaining > 0:
+                    human_hint += f" Approximately {remaining} seconds remaining."
+
+                raise HTTPException(status_code=400, detail=human_hint)
+
+            raise HTTPException(status_code=500, detail=f"Failed to fulfill time-based escrow: {error_msg}")
             
     except HTTPException:
         raise
