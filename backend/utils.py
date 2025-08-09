@@ -52,14 +52,12 @@ def create_escrow(funder_seed: str, developer_address: str, amount: float, finis
     except Exception as e:
         pass
     
-    cancel_date = add_seconds(finish_after)
     finish_date = add_seconds(finish_after)
 
     escrow_tx = EscrowCreate(
         account=wallet.classic_address,
         amount=str(xrp_to_drops(amount)),
         destination=developer_address,
-        cancel_after=cancel_date,
         finish_after=finish_date
     )
     
