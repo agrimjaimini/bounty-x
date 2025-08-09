@@ -17,9 +17,10 @@ app = FastAPI(title="Bounty-X API", description="A decentralized bounty platform
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://agrimjaimini.github.io/bounty-x/",
+        "https://agrimjaimini.github.io",
         "https://18-222-139-25.sslip.io",
     ],
+    allow_origin_regex=r"^https://agrimjaimini\.github\.io$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
