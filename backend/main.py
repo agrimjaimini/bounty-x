@@ -45,7 +45,6 @@ class BountyAccept(BaseModel):
 class BountyClaim(BaseModel):
     """Payload to claim a bounty after a PR is merged and verified."""
     merge_request_url: str
-    developer_secret_key: str
 
 class Bounty(BaseModel):
     """Response model describing a bounty and its escrow status."""
@@ -61,6 +60,7 @@ class Bounty(BaseModel):
     escrow_sequence: Optional[int]
     escrow_condition: Optional[str]
     escrow_fulfillment: Optional[str]
+    developer_secret_key: Optional[str] = None
     status: str
     created_at: str
     updated_at: str
@@ -352,13 +352,12 @@ def claim_bounty(bounty_id: int, claim: BountyClaim):
         if not issue_number:
             raise HTTPException(status_code=400, detail="Invalid GitHub issue URL")
         
-        if not db.verify_developer_secret_key(bounty_id, claim.developer_secret_key):
-            raise HTTPException(
-                status_code=400, 
-                detail="Invalid developer secret key. Only the developer who accepted this bounty can claim it."
-            )
-        
-        if not utils.verify_merge_request_contains_issue(claim.merge_request_url, issue_number, claim.developer_secret_key):
+        # Fetch the stored developer secret key and verify it is present in the PR
+        stored_dev_key = db.get_developer_secret_key(bounty_id)
+        if not stored_dev_key:
+            raise HTTPException(status_code=400, detail="No developer secret key found for this bounty")
+
+        if not utils.verify_merge_request_contains_issue(claim.merge_request_url, issue_number, stored_dev_key):
             raise HTTPException(
                 status_code=400, 
                 detail="Merge request must contain both the issue number reference and the developer secret key"
@@ -422,6 +421,7 @@ def get_bounty(bounty_id: int):
             escrow_sequence=bounty['escrow_sequence'],
             escrow_condition=bounty['escrow_condition'],
             escrow_fulfillment=bounty['escrow_fulfillment'],
+            developer_secret_key=bounty['developer_secret_key'],
             status=bounty['status'],
             created_at=bounty['created_at'],
             updated_at=bounty['updated_at']
