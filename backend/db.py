@@ -797,9 +797,10 @@ def claim_bounty(bounty_id: int) -> bool:
                 cursor.execute('''
                     UPDATE users 
                     SET total_xrp_earned = total_xrp_earned + ?,
+                        current_xrp_balance = current_xrp_balance + ?,
                         last_updated = ?
                     WHERE xrp_address = ?
-                ''', (bounty[2], now, bounty[0]))
+                ''', (bounty[2], bounty[2], now, bounty[0]))
             
             conn.commit()
             return cursor.rowcount > 0
