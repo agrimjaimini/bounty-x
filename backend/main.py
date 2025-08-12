@@ -418,10 +418,10 @@ def claim_bounty(bounty_id: int, claim: BountyClaim):
                 detail="Merge request must contain both the issue number reference and the developer secret key"
             )
         
-        # Fetch internal to get fulfillment
+        # Fetch internal to get condition and fulfillment
         internal = db.get_bounty_internal_by_id(bounty_id)
-        if not internal or not internal.get('escrow_fulfillment'):
-            raise HTTPException(status_code=400, detail="No escrow fulfillment available")
+        if not internal or not internal.get('escrow_fulfillment') or not internal.get('escrow_condition'):
+            raise HTTPException(status_code=400, detail="No escrow condition/fulfillment available")
 
         try:
             # Determine contributions with escrows
@@ -438,7 +438,8 @@ def claim_bounty(bounty_id: int, claim: BountyClaim):
                         owner_address=c['contributor_address'],
                         offer_sequence=c['escrow_sequence'],
                         finisher_seed=contributor['xrp_seed'],
-                        fulfillment_hex=internal['escrow_fulfillment']
+                        fulfillment_hex=internal['escrow_fulfillment'],
+                        condition_hex=internal['escrow_condition']
                     )
                     tx_results.append(tx_response.result)
             else:
@@ -450,7 +451,8 @@ def claim_bounty(bounty_id: int, claim: BountyClaim):
                     owner_address=bounty['funder_address'],
                     offer_sequence=bounty['escrow_sequence'],
                     finisher_seed=funder['xrp_seed'],
-                    fulfillment_hex=internal['escrow_fulfillment']
+                    fulfillment_hex=internal['escrow_fulfillment'],
+                    condition_hex=internal['escrow_condition']
                 )
                 tx_results.append(tx_response.result)
 

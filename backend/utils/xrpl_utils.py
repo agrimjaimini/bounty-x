@@ -75,6 +75,7 @@ def finish_conditional_escrow(
     offer_sequence: int,
     finisher_seed: str,
     fulfillment_hex: str,
+    condition_hex: str,
 ):
     try:
         client = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
@@ -84,6 +85,7 @@ def finish_conditional_escrow(
             owner=owner_address,
             offer_sequence=offer_sequence,
             fulfillment=fulfillment_hex,
+            condition=condition_hex,
         )
         response = submit_and_wait(finish_tx, client, finisher_wallet)
         return response
