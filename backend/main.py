@@ -17,7 +17,7 @@ app.add_middleware(
     allow_origins=[
         "https://agrimjaimini.github.io",
         "http://localhost:3000",
-        "https://bounty-x-virid.vercel.app/"
+        "https://bounty-x-virid.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
