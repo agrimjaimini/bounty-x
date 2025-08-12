@@ -1,16 +1,21 @@
 import axios from 'axios';
 import { UserRegister, UserLogin, BountyCreate, BountyAccept, BountyClaim, PlatformStatistics } from '../types/api';
 
+// Always normalize to include /api and avoid double slashes
+const RAW = (process.env.REACT_APP_API_BASE_URL || '').trim();
+const FALLBACK =
+  typeof window !== 'undefined'
+    ? window.location.origin
+    : 'http://localhost:8000';
 
-const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
-
+const BASE_NO_SLASH = (RAW || FALLBACK).replace(/\/+$/, '');
+export const API_BASE_URL = BASE_NO_SLASH.endsWith('/api')
+  ? BASE_NO_SLASH
+  : `${BASE_NO_SLASH}/api`;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
 // User Management
