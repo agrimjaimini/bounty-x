@@ -19,7 +19,7 @@ def extract_issue_number_from_url(github_issue_url: str) -> Optional[str]:
 def verify_merge_request_contains_issue(
     merge_request_url: str,
     issue_number: str,
-    developer_secret_key: str | None = None,
+    developer_secret_key: Optional[str] = None,
 ) -> bool:
     try:
         api_url = merge_request_url.replace('github.com', 'api.github.com/repos')
