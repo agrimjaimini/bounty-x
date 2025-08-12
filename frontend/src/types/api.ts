@@ -45,12 +45,11 @@ export interface BountyCreate {
   description: string;
   github_issue_url: string;
   amount: number;
-  finish_after: number;
+  time_limit_seconds: number;
 }
 
 export interface BountyAccept {
   developer_address: string;
-  finish_after: number;
 }
 
 export interface BountyClaim {

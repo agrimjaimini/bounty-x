@@ -2,8 +2,9 @@ import React from 'react';
 
 const Footer: React.FC = () => {
   return (
-    <footer className="bg-neutral-950/60 backdrop-blur-sm border-t border-neutral-800/50 mt-auto">
-      <div className="container mx-auto px-4 py-8">
+    <footer className="relative bg-neutral-950/60 backdrop-blur-sm border-t border-neutral-800/50 mt-auto">
+      <div className="pointer-events-none absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
             <span className="text-neutral-400 text-sm">

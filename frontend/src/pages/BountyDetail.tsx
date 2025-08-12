@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { SkeletonText, SkeletonCircle } from '../components/ui/Skeleton';
+import { SkeletonText } from '../components/ui/Skeleton';
 import { useAuth } from '../contexts/AuthContext';
 import { bountyApi } from '../services/api';
 import { Bounty } from '../types/api';
@@ -25,17 +25,19 @@ const BountyDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showAcceptForm, setShowAcceptForm] = useState(false);
+  const [showBoostForm, setShowBoostForm] = useState(false);
   const [showClaimForm, setShowClaimForm] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [acceptForm, setAcceptForm] = useState({
     developer_address: '',
-    finish_after: '86400',
   });
   const [claimForm, setClaimForm] = useState({
     merge_request_url: '',
   });
   const [developerSecretKey, setDeveloperSecretKey] = useState<string>('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [boostAmount, setBoostAmount] = useState<string>('');
+  const [contributions, setContributions] = useState<Array<{ id: number; bounty_id: number; contributor_id: number; contributor_address: string; amount: number; escrow_id?: string | null; escrow_sequence?: number | null; created_at: string; updated_at: string; }>>([]);
 
   const fetchBounty = useCallback(async () => {
     try {
@@ -57,10 +59,32 @@ const BountyDetail: React.FC = () => {
   }, [id, fetchBounty]);
 
   useEffect(() => {
-    if (bounty && bounty.developer_secret_key && !developerSecretKey) {
-      setDeveloperSecretKey(bounty.developer_secret_key);
-    }
-  }, [bounty, developerSecretKey]);
+    const fetchContribs = async () => {
+      try {
+        if (!id) return;
+        const list = await bountyApi.getContributions(parseInt(id));
+        setContributions(Array.isArray(list) ? list : []);
+      } catch (e) {}
+    };
+    fetchContribs();
+  }, [id, showBoostForm, showAcceptForm, bounty?.status]);
+
+  useEffect(() => {
+    const fetchDevKeyIfAuthorized = async () => {
+      if (!bounty || !user) return;
+      if (bounty.developer_address && user.xrp_address === bounty.developer_address) {
+        try {
+          const resp = await bountyApi.getDeveloperSecret(bounty.id, user.id);
+          if (resp?.developer_secret_key) {
+            setDeveloperSecretKey(resp.developer_secret_key);
+          }
+        } catch (e) {
+          // silently ignore forbidden/not found
+        }
+      }
+    };
+    fetchDevKeyIfAuthorized();
+  }, [bounty, user]);
 
   const handleAcceptBounty = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,7 +94,6 @@ const BountyDetail: React.FC = () => {
     try {
       const response = await bountyApi.acceptBounty(parseInt(id!), {
         developer_address: acceptForm.developer_address,
-        finish_after: parseInt(acceptForm.finish_after),
       });
       
       // Store the developer secret key
@@ -115,6 +138,28 @@ const BountyDetail: React.FC = () => {
       navigate('/bounties');
     } catch (error: any) {
       setError(error.response?.data?.detail || 'Failed to cancel bounty');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleBoostBounty = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setActionLoading(true);
+    setError('');
+    try {
+      const amount = parseFloat(boostAmount);
+      if (isNaN(amount) || amount <= 0) {
+        setError('Enter a valid amount');
+        return;
+      }
+      await bountyApi.boostBounty(parseInt(id!), user.id, amount);
+      setShowBoostForm(false);
+      setBoostAmount('');
+      fetchBounty();
+    } catch (error: any) {
+      setError(error.response?.data?.detail || 'Failed to boost bounty');
     } finally {
       setActionLoading(false);
     }
@@ -328,7 +373,7 @@ const BountyDetail: React.FC = () => {
             transition={{ delay: 0.3 }}
           >
             <motion.h1 
-              className="text-3xl font-bold text-white mb-2"
+              className="text-3xl font-bold gradient-text text-balance mb-2"
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.4, duration: 0.3, ease: "easeOut" }}
@@ -341,12 +386,12 @@ const BountyDetail: React.FC = () => {
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.5, duration: 0.3, ease: "easeOut" }}
             >
-              <CurrencyDollarIcon className="h-5 w-5 mr-1" />
+              <CurrencyDollarIcon className="h-5 w-5 mr-1 text-neutral-400" />
               <span className="text-xl font-semibold text-warning-400">{bounty.amount} XRP</span>
-              {bounty.escrow_id && (
+              {contributions.filter(c => !!c.escrow_id).length > 0 && (
                 <span className="ml-3 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-success-500/20 text-success-400 border border-success-500/30">
-                  <CheckCircleIcon className="h-4 w-4 mr-1" />
-                  Escrow Verified
+                  <CheckCircleIcon className="h-4 w-4 mr-1 text-neutral-400" />
+                  {contributions.filter(c => !!c.escrow_id).length} Escrow{contributions.filter(c => !!c.escrow_id).length > 1 ? 's' : ''} Created
                 </span>
               )}
             </motion.div>
@@ -367,13 +412,13 @@ const BountyDetail: React.FC = () => {
           </motion.div>
 
           <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-3">Details</h3>
+            <div className="card-gradient p-5 rounded-2xl">
+              <h3 className="text-lg font-semibold gradient-text mb-3">Details</h3>
               <div className="space-y-3">
                 <div>
                   <label className="text-sm font-medium text-gray-400">GitHub Issue</label>
                   <div className="flex items-center mt-1">
-                    <LinkIcon className="h-4 w-4 text-gray-400 mr-2" />
+                    <LinkIcon className="h-4 w-4 text-primary-400 mr-2" />
                     <a
                       href={bounty.github_issue_url}
                       target="_blank"
@@ -385,19 +430,7 @@ const BountyDetail: React.FC = () => {
                   </div>
                 </div>
                 
-                <div>
-                  <label className="text-sm font-medium text-gray-400">Funder Address</label>
-                  <div className="flex items-center mt-1 gap-2">
-                    <UserIcon className="h-4 w-4 text-gray-400 mr-2" />
-                    <span className="font-mono text-sm text-gray-300">{bounty.funder_address.slice(0, 8)}...{bounty.funder_address.slice(-8)}</span>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(bounty.funder_address)}
-                      className="text-xs text-primary-400 hover:text-primary-300"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
+                {/* Contributors removed from Details per request; shown only under Escrow Information */}
 
                 {bounty.developer_address && (
                   <div>
@@ -427,24 +460,51 @@ const BountyDetail: React.FC = () => {
               </div>
             </div>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-3">Escrow Information</h3>
-              <div className="space-y-3">
-                {bounty.escrow_id ? (
-                  <>
-                    <div>
-                      <label className="text-sm font-medium text-gray-400">Escrow ID</label>
-                      <p className="mt-1 font-mono text-sm break-all text-gray-300">{bounty.escrow_id}</p>
+            <div className="card-gradient p-5 rounded-2xl">
+              <h3 className="text-lg font-semibold gradient-text mb-3">Escrow Information</h3>
+              {contributions && contributions.filter(c => !!c.escrow_id).length > 0 ? (
+                <div className="grid grid-cols-1 gap-4">
+                  {contributions.filter(c => !!c.escrow_id).map((c) => (
+                    <div key={c.id} className="card-compact card-gradient p-6">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="text-xs text-gray-400">Contributor</div>
+                          <div className="font-mono text-sm text-gray-300">{c.contributor_address.slice(0,12)}...{c.contributor_address.slice(-12)}</div>
+                        </div>
+                        <div className="text-sm text-warning-400 font-semibold flex-shrink-0 whitespace-nowrap">{c.amount} XRP</div>
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        <div className="min-w-0">
+                          <div className="text-xs text-gray-400">Escrow ID</div>
+                          <div className="flex items-center gap-2">
+                            <div
+                              title={c.escrow_id || undefined}
+                              className="font-mono text-sm text-gray-300 flex-1 min-w-0 break-all leading-snug"
+                              style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                            >
+                              {c.escrow_id || '—'}
+                            </div>
+                            {c.escrow_id && (
+                              <button
+                                onClick={() => navigator.clipboard.writeText(c.escrow_id!)}
+                                className="text-xs text-primary-400 hover:text-primary-300 flex-shrink-0"
+                              >
+                                Copy
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-400">Escrow Sequence</div>
+                          <div className="font-mono text-sm text-gray-300">{c.escrow_sequence ?? '—'}</div>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-400">Escrow Sequence</label>
-                      <p className="mt-1 text-gray-300">{bounty.escrow_sequence}</p>
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-gray-500">No escrow created yet</p>
-                )}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500">No escrows created yet</p>
+              )}
             </div>
           </div>
         </div>
@@ -475,6 +535,18 @@ const BountyDetail: React.FC = () => {
                 </motion.button>
               )}
 
+              {bounty.status === 'open' && user && user.id !== bounty.funder_id && (
+                <motion.button
+                  onClick={() => setShowBoostForm(true)}
+                  className="btn-primary"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                >
+                  Boost Bounty
+                </motion.button>
+              )}
+
               {bounty.status === 'open' && user && user.id === bounty.funder_id && (
                 <motion.button
                   onClick={() => setShowCancelConfirm(true)}
@@ -491,7 +563,7 @@ const BountyDetail: React.FC = () => {
 
             {bounty.status === 'accepted' && bounty.developer_address && (
               <>
-                {developerSecretKey && (
+                {developerSecretKey && user && bounty.developer_address === user.xrp_address && (
                   <motion.div 
                     className="mb-4 p-4 bg-warning-500/10 border border-warning-500/20 rounded-lg"
                     initial={{ opacity: 0, y: 10 }}
@@ -532,8 +604,60 @@ const BountyDetail: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Sticky bottom action bar removed per design update */}
 
+      <AnimatePresence>
+        {showBoostForm && (
+          <motion.div 
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div 
+              className="modal-content"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            >
+            <h3 className="text-lg font-semibold text-white mb-4">Boost Bounty</h3>
+            <form onSubmit={handleBoostBounty} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Amount (XRP)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.000001"
+                  required
+                  value={boostAmount}
+                  onChange={(e) => setBoostAmount(e.target.value)}
+                  className="input-field"
+                  placeholder="Enter amount to add"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowBoostForm(false)}
+                  className="btn-secondary flex-1"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="btn-primary flex-1"
+                >
+                  {actionLoading ? 'Boosting...' : 'Boost'}
+                </button>
+              </div>
+            </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {showAcceptForm && (
           <motion.div 

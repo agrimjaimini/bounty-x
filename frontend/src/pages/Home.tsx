@@ -32,32 +32,7 @@ const Home: React.FC = () => {
     fetchStats();
   }, []);
 
-  const features = [
-    {
-      icon: CurrencyDollarIcon,
-      title: 'Decentralized Bounties',
-      description: 'Create and fund bounties using XRP cryptocurrency with secure escrow services.',
-      gradient: 'from-primary-500 to-primary-600',
-    },
-    {
-      icon: CodeBracketIcon,
-      title: 'GitHub Integration',
-      description: 'Seamlessly link bounties to GitHub issues and verify merge requests.',
-      gradient: 'from-accent-500 to-accent-600',
-    },
-    {
-      icon: ShieldCheckIcon,
-      title: 'Secure Escrow',
-      description: 'Conditional escrow ensures funds are only released when work is completed.',
-      gradient: 'from-success-500 to-success-600',
-    },
-    {
-      icon: RocketLaunchIcon,
-      title: 'Fast Payments',
-      description: 'Instant XRP payments once bounty conditions are met.',
-      gradient: 'from-warning-500 to-warning-600',
-    },
-  ];
+
 
   const steps = [
     {
@@ -102,7 +77,7 @@ const Home: React.FC = () => {
 
   return (
     <div className="space-y-16 fade-in">
-      <section className="relative overflow-hidden rounded-3xl border border-neutral-800/50 bg-neutral-950/50 backdrop-blur-sm">
+      <section className="relative overflow-hidden rounded-3xl border border-neutral-800/50 bg-neutral-950/50 backdrop-blur-sm card-gradient">
         <div className="pointer-events-none absolute -top-24 -left-24 h-96 w-96 rounded-full bg-blue-500/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 -right-24 h-96 w-96 rounded-full bg-blue-600/10 blur-3xl" />
         <div className="relative grid items-center gap-10 px-8 py-16 md:px-12 lg:grid-cols-2 lg:py-20">
@@ -110,7 +85,7 @@ const Home: React.FC = () => {
             <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-sm text-blue-300 mb-6">
               Powered by the XRP Ledger
             </div>
-            <h1 className="mb-6 text-5xl font-bold gradient-text sm:text-6xl">
+            <h1 className="mb-6 text-5xl font-bold gradient-text text-balance sm:text-6xl py-4 sm:py-6 px-2 sm:px-3">
               Decentralized Bounties, Supercharged by the XRP Ledger
             </h1>
             <p className="text-xl leading-relaxed text-gray-300 max-w-prose">
@@ -147,69 +122,28 @@ const Home: React.FC = () => {
           <h2 className="text-3xl font-bold text-center mb-8 gradient-text">
             Platform Statistics
           </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="text-center group">
-              <div className="relative">
-                <div className="text-4xl font-bold text-primary-400 mb-2 group-hover:scale-110 transition-transform duration-200">
-                  {stats.total_bounties}
-                </div>
-                <div className="absolute inset-0 bg-primary-500/10 rounded-full blur-sm group-hover:bg-primary-500/20 transition-all duration-200"></div>
-              </div>
-              <div className="text-gray-400">Total Bounties</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+            <div className="card-gradient rounded-2xl p-5 text-center">
+              <div className="text-4xl font-extrabold tracking-tight text-primary-300 mb-1">{stats.total_bounties}</div>
+              <div className="text-sm text-gray-400 mt-1">Total Bounties</div>
             </div>
-            <div className="text-center group">
-              <div className="relative">
-                <div className="text-4xl font-bold text-success-400 mb-2 group-hover:scale-110 transition-transform duration-200">
-                  {stats.open_bounties}
-                </div>
-                <div className="absolute inset-0 bg-success-500/10 rounded-full blur-sm group-hover:bg-success-500/20 transition-all duration-200"></div>
-              </div>
-              <div className="text-gray-400">Open Bounties</div>
+            <div className="card-gradient rounded-2xl p-5 text-center">
+              <div className="text-4xl font-extrabold tracking-tight text-success-300 mb-1">{stats.open_bounties}</div>
+              <div className="text-sm text-gray-400 mt-1">Open Bounties</div>
             </div>
-            <div className="text-center group">
-              <div className="relative">
-                <div className="text-4xl font-bold text-warning-400 mb-2 group-hover:scale-110 transition-transform duration-200">
-                  {stats.accepted_bounties}
-                </div>
-                <div className="absolute inset-0 bg-warning-500/10 rounded-full blur-sm group-hover:bg-warning-500/20 transition-all duration-200"></div>
-              </div>
-              <div className="text-gray-400">In Progress</div>
+            <div className="card-gradient rounded-2xl p-5 text-center">
+              <div className="text-4xl font-extrabold tracking-tight text-warning-300 mb-1">{stats.accepted_bounties}</div>
+              <div className="text-sm text-gray-400 mt-1">In Progress</div>
             </div>
-            <div className="text-center group">
-              <div className="relative">
-                <div className="text-4xl font-bold text-accent-400 mb-2 group-hover:scale-110 transition-transform duration-200">
-                  {stats.total_amount} XRP
-                </div>
-                <div className="absolute inset-0 bg-accent-500/10 rounded-full blur-sm group-hover:bg-accent-500/20 transition-all duration-200"></div>
-              </div>
-              <div className="text-gray-400">Total Value</div>
+            <div className="card-gradient rounded-2xl p-5 text-center">
+              <div className="text-4xl font-extrabold tracking-tight text-accent-300 mb-1">{stats.total_amount} <span className="text-2xl align-top">XRP</span></div>
+              <div className="text-sm text-gray-400 mt-1">Total Value</div>
             </div>
           </div>
         </section>
       )}
 
-      <section className="slide-up">
-        <h2 className="text-4xl font-bold text-center mb-16 gradient-text">
-          Why Choose Bounty-X?
-        </h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-          {features.map((feature, index) => (
-            <div key={index} className="card-hover group">
-              <div className="text-center">
-                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-r ${feature.gradient} mb-6 group-hover:scale-110 transition-transform duration-200`}>
-                  <feature.icon className="h-8 w-8 text-white" />
-                </div>
-                <h3 className="text-xl font-semibold text-white mb-3">
-                  {feature.title}
-                </h3>
-                <p className="text-gray-400 leading-relaxed">
-                  {feature.description}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+
 
       <section className="slide-up">
         <h2 className="text-4xl font-bold text-center mb-16 gradient-text">How it works</h2>

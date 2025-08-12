@@ -12,7 +12,7 @@ const CreateBounty: React.FC = () => {
     description: '',
     github_issue_url: '',
     amount: '',
-    finish_after: '86400', // Default 24 hours
+    time_limit_seconds: '86400', // Default 24 hours
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -66,7 +66,7 @@ const CreateBounty: React.FC = () => {
         description: formData.description.trim(),
         github_issue_url: formData.github_issue_url.trim(),
         amount: parseFloat(formData.amount),
-        finish_after: parseInt(formData.finish_after),
+        time_limit_seconds: parseInt(formData.time_limit_seconds),
       });
       navigate('/bounties');
     } catch (error: any) {
@@ -168,16 +168,22 @@ const CreateBounty: React.FC = () => {
           <p className="mt-2 text-sm text-gray-400">
             Amount will be held in escrow until the bounty is completed
           </p>
+          <div className="mt-3 p-3 bg-warning-500/10 border border-warning-500/20 rounded-lg text-warning-300 flex items-start gap-2">
+            <ExclamationTriangleIcon className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <p className="text-xs">
+              XRPL accounts require a 20 XRP minimum reserve. Ensure your wallet has at least 20 XRP before creating a bounty.
+            </p>
+          </div>
         </div>
 
         <div>
-          <label htmlFor="finish_after" className="form-label">
+          <label htmlFor="time_limit_seconds" className="form-label">
             Time Limit
           </label>
           <select
-            id="finish_after"
-            name="finish_after"
-            value={formData.finish_after}
+            id="time_limit_seconds"
+            name="time_limit_seconds"
+            value={formData.time_limit_seconds}
             onChange={handleChange}
             className="input-field"
           >

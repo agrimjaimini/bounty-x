@@ -209,7 +209,7 @@ const Bounties: React.FC = () => {
     <div className="space-y-6 fade-in">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Bounties</h1>
+          <h1 className="text-3xl font-bold gradient-text text-balance">Bounties</h1>
           <p className="text-gray-300 mt-1">
             Find and work on exciting projects
           </p>
@@ -284,52 +284,50 @@ const Bounties: React.FC = () => {
             <Link
               key={bounty.id}
               to={`/bounties/${bounty.id}`}
-              className="card-hover"
+              className="card card-gradient hover:scale-[1.02] transition-transform"
             >
-              <div className="space-y-4">
-                <div className="flex justify-between items-start">
-                  <h3 className="text-lg font-semibold text-white line-clamp-2">
+              <div className="space-y-3">
+                {/* Header: title + amount */}
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="text-lg font-semibold text-white line-clamp-1">
                     {formatBountyName(bounty.bounty_name)}
                   </h3>
-                  {getStatusBadge(bounty.status)}
-                </div>
-                
-                <div className="text-sm text-blue-400 font-medium inline-flex items-center gap-2">
-                  <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300">
-                    <CodeBracketIcon className="h-4 w-4 mr-1" />
-                    {extractRepoName(bounty.github_issue_url)}
-                  </span>
-                  {bounty.escrow_id && (
-                    <span className="inline-flex items-center px-2 py-1 rounded-full bg-success-500/10 border border-success-500/20 text-success-400">
-                      <CheckCircleIcon className="h-4 w-4 mr-1" />
-                      Escrowed
-                    </span>
-                  )}
-                </div>
-                
-                {bounty.description && (
-                  <div className="text-sm text-gray-300 line-clamp-3">
-                    {bounty.description}
-                  </div>
-                )}
-                
-                <div className="flex items-center justify-between text-sm text-gray-300">
-                  <span className="flex items-center">
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-sm font-semibold bg-warning-500/20 text-warning-400 border border-warning-500/30 whitespace-nowrap">
                     <CurrencyDollarIcon className="h-4 w-4 mr-1" />
                     {bounty.amount} XRP
                   </span>
-                  <span>{formatDate(bounty.created_at)}</span>
                 </div>
-                
-                <div className="text-sm text-gray-400 truncate">
-                  {bounty.github_issue_url}
+
+                {/* Subline: repo + badges */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="inline-flex items-center gap-2 min-w-0">
+                    <CodeBracketIcon className="h-4 w-4 text-neutral-400" />
+                    <span className="text-primary-400 hover:text-primary-300 truncate">
+                      {extractRepoName(bounty.github_issue_url)}
+                    </span>
+                  </span>
+                  <div className="inline-flex items-center gap-2 flex-shrink-0">
+                    {bounty.escrow_id && (
+                      <span className="badge-success">
+                        <CheckCircleIcon className="h-3 w-3 mr-1" />
+                        Escrowed
+                      </span>
+                    )}
+                    {getStatusBadge(bounty.status)}
+                  </div>
                 </div>
-                
-                {bounty.developer_address && (
-                  <div className="text-xs text-gray-500">
-                    Developer: {bounty.developer_address.slice(0, 8)}...{bounty.developer_address.slice(-8)}
+
+                {/* Optional description */}
+                {bounty.description && (
+                  <div className="text-sm text-gray-300 line-clamp-2">
+                    {bounty.description}
                   </div>
                 )}
+
+                {/* Footer: date */}
+                <div className="text-xs text-gray-400">
+                  {formatDate(bounty.created_at)}
+                </div>
               </div>
             </Link>
           ))}

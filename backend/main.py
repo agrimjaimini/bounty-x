@@ -1,16 +1,13 @@
-"""FastAPI application for the Bounty-X platform.
-
-Exposes endpoints to register/login users, manage bounties,
-handle escrow lifecycle, and provide statistics.
-"""
+ 
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime, timezone
 import db
-import utils
+from utils import xrpl_utils
+from utils import github_utils
 from xrpl.utils import datetime_to_ripple_time
 
 app = FastAPI(title="Bounty-X API", description="A decentralized bounty platform")
@@ -19,7 +16,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://agrimjaimini.github.io",
-        "https://18-222-139-25.sslip.io",
+        "http://localhost:3000",
     ],
     allow_origin_regex=r"^https://agrimjaimini\.github\.io$",
     allow_credentials=True,
@@ -30,25 +27,35 @@ app.add_middleware(
 db.init_database()
 
 class BountyCreate(BaseModel):
-    """Payload to create a new bounty funded by a user."""
     funder_id: int
     bounty_name: str
     description: Optional[str] = None
     github_issue_url: str
     amount: float
-    finish_after: int
+    time_limit_seconds: int
 
 class BountyAccept(BaseModel):
-    """Payload for a developer to accept a bounty and set finish window."""
     developer_address: str
-    finish_after: int = 86400
 
 class BountyClaim(BaseModel):
-    """Payload to claim a bounty after a PR is merged and verified."""
     merge_request_url: str
 
+class BountyBoost(BaseModel):
+    contributor_id: int
+    amount: float
+
+class BountyContribution(BaseModel):
+    id: int
+    bounty_id: int
+    contributor_id: int
+    contributor_address: str
+    amount: float
+    escrow_id: Optional[str] = None
+    escrow_sequence: Optional[int] = None
+    created_at: str
+    updated_at: str
+
 class Bounty(BaseModel):
-    """Response model describing a bounty and its escrow status."""
     id: int
     funder_id: int
     bounty_name: str
@@ -67,7 +74,6 @@ class Bounty(BaseModel):
     updated_at: str
 
 class User(BaseModel):
-    """User profile and aggregate statistics."""
     id: int
     username: str
     password: str
@@ -82,25 +88,21 @@ class User(BaseModel):
     last_updated: str
 
 class UserRegister(BaseModel):
-    """Registration payload with username and password."""
     username: str
     password: str
 
 class UserLogin(BaseModel):
-    """Login payload with username and password."""
     username: str
     password: str
 
 class UpdateBalance(BaseModel):
-    """Request body to set a user's current XRPL balance."""
     new_balance: float
 
 @app.post("/register")
 def register(user: UserRegister):
-    """Register a new user and create a funded XRPL testnet wallet."""
     try:
-        wallet = utils.create_testnet_account()
-        account_info = utils.get_account_info(wallet.classic_address)
+        wallet = xrpl_utils.create_testnet_account()
+        account_info = xrpl_utils.get_account_info(wallet.classic_address)
         user_id = db.create_user(user.username, user.password, wallet.classic_address, wallet.private_key, wallet.seed, account_info['balance_xrp'])
         
         return {"message": "User registered successfully", "user_id": user_id}
@@ -109,7 +111,6 @@ def register(user: UserRegister):
 
 @app.post("/login")
 def login(user: UserLogin):
-    """Authenticate a user and return profile metadata."""
     try:
         user_data = db.get_user_by_credentials(user.username, user.password)
         if not user_data:
@@ -134,7 +135,6 @@ def login(user: UserLogin):
 
 @app.post("/bounties/", response_model=Bounty)
 def create_bounty(bounty: BountyCreate):
-    """Create a new bounty if the funder has sufficient balance."""
     now = datetime.now(timezone.utc).isoformat()
 
     try:
@@ -154,7 +154,8 @@ def create_bounty(bounty: BountyCreate):
             bounty.description or "",
             bounty.github_issue_url,
             user['xrp_address'],
-            bounty.amount
+            bounty.amount,
+            int(bounty.time_limit_seconds)
         )
         
         return Bounty(
@@ -229,6 +230,15 @@ def get_bounties_by_developer(developer_address: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get bounties by developer: {str(e)}")
 
+@app.get("/bounties/contributor/{user_id}", response_model=List[Bounty])
+def get_bounties_by_contributor(user_id: int):
+    """List bounties that a given user has contributed to (boosted)."""
+    try:
+        bounties = db.get_bounties_by_contributor(user_id)
+        return bounties
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get bounties by contributor: {str(e)}")
+
 @app.get("/bounties/statistics")
 def get_bounty_statistics():
     """Aggregate counts and totals across all bounties."""
@@ -270,65 +280,110 @@ def get_user_statistics(user_id: int):
 
 @app.post("/bounties/{bounty_id}/accept")
 def accept_bounty(bounty_id: int, accept: BountyAccept):
-    """Create an escrow and mark a bounty as accepted by a developer."""
+    """Create conditional escrows per-contributor and mark a bounty as accepted."""
     try:
-        bounty = db.get_bounty_by_id(bounty_id)
+        bounty_public = db.get_bounty_by_id(bounty_id)
+        bounty = db.get_bounty_internal_by_id(bounty_id)
         if not bounty:
             raise HTTPException(status_code=404, detail="Bounty not found")
         
         if bounty['status'] != "open":
             raise HTTPException(status_code=400, detail="Bounty is not open")
         
-        user = db.get_user_by_id(bounty['funder_id'])
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        # Build contributions list (supports legacy single-funder path if none found)
+        contributions = db.get_contributions_by_bounty(bounty_id)
+        if not contributions:
+            # Fallback to legacy single-funder contribution synthesized from bounty
+            funder_user = db.get_user_by_id(bounty['funder_id'])
+            if not funder_user:
+                raise HTTPException(status_code=404, detail="User not found")
+            contributions = [{
+                'id': -1,
+                'bounty_id': bounty_id,
+                'contributor_id': funder_user['id'],
+                'contributor_address': funder_user['xrp_address'],
+                'amount': bounty['amount'],
+            }]
+
+        # Validate each contributor has sufficient balance and a seed
+        contributor_cache: Dict[int, Dict] = {}
+        for c in contributions:
+            user = db.get_user_by_id(c['contributor_id'])
+            if not user:
+                raise HTTPException(status_code=404, detail=f"Contributor {c['contributor_id']} not found")
+            if not user.get('xrp_seed'):
+                raise HTTPException(status_code=400, detail=f"Contributor {user['username']} has no XRP seed configured")
+            if user['current_xrp_balance'] < float(c['amount']):
+                raise HTTPException(status_code=400, detail=f"Contributor {user['username']} has insufficient balance for escrow")
+            if not xrpl_utils.validate_account_for_escrow(user['xrp_seed'], float(c['amount'])):
+                raise HTTPException(status_code=400, detail=f"Contributor {user['username']}: XRPL account validation failed")
+            contributor_cache[c['contributor_id']] = user
         
-        if user['current_xrp_balance'] < bounty['amount']:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Insufficient balance. Current: {user['current_xrp_balance']} XRP, Required: {bounty['amount']} XRP"
-            )
-        
-        if not user['xrp_seed']:
-            raise HTTPException(
-                status_code=400, 
-                detail="User has no XRP seed configured. Please contact support."
-            )
-        
-        developer_secret_key = utils.generate_developer_secret_key()
-        
-        if not utils.validate_account_for_escrow(user['xrp_seed'], bounty['amount']):
-            raise HTTPException(
-                status_code=400, 
-                detail="Account validation failed. Please ensure your wallet is properly funded with sufficient XRP."
-            )
-        
-        try:
-            escrow_response = utils.create_escrow(user['xrp_seed'], accept.developer_address, bounty['amount'], accept.finish_after)
-        except Exception as escrow_error:
-            error_msg = str(escrow_error)
-            if "Insufficient funds" in error_msg:
-                raise HTTPException(status_code=400, detail="Insufficient XRP balance to create escrow")
-            elif "No permission" in error_msg:
-                raise HTTPException(status_code=400, detail="Account permission error. Please ensure your wallet is properly funded.")
-            elif "unfunded" in error_msg.lower():
-                raise HTTPException(status_code=400, detail="Account is unfunded. Please fund your wallet first.")
-            else:
-                raise HTTPException(status_code=500, detail=f"Escrow creation failed: {error_msg}")
-        
-        db.accept_bounty(
-            bounty_id, 
-            accept.developer_address, 
-            escrow_response.result['hash'], 
-            escrow_response.result['tx_json']['Sequence'],
-            developer_secret_key
+        # For conditional escrow, use the bounty's time limit as CancelAfter window; fallback to 1 day if missing
+        cancel_after_seconds = int(bounty.get('time_limit_seconds') or 86400)
+        cancel_after_seconds = min(max(cancel_after_seconds, 600), 60 * 60 * 24 * 30)
+
+        # Generate on-chain condition and server-held fulfillment/preimage (shared by all escrows)
+        condition_hex, fulfillment_hex, preimage_hex = xrpl_utils.generate_condition_and_fulfillment()
+
+        developer_secret_key = github_utils.generate_developer_secret_key()
+
+        # Create an escrow per contribution
+        contribution_escrows: List[Dict[str, any]] = []
+        balance_deductions: List[Dict[str, any]] = []
+        first_escrow_id = None
+        first_escrow_seq = None
+        for c in contributions:
+            u = contributor_cache[c['contributor_id']]
+            try:
+                esc = xrpl_utils.create_conditional_escrow(
+                    u['xrp_seed'],
+                    accept.developer_address,
+                    float(c['amount']),
+                    cancel_after_seconds,
+                    condition_hex
+                )
+            except Exception as escrow_error:
+                error_msg = str(escrow_error)
+                if "Insufficient" in error_msg:
+                    raise HTTPException(status_code=400, detail=f"{u['username']}: Insufficient XRP to create escrow")
+                elif "No permission" in error_msg:
+                    raise HTTPException(status_code=400, detail=f"{u['username']}: Account permission error")
+                else:
+                    raise HTTPException(status_code=500, detail=f"Escrow creation failed for {u['username']}: {error_msg}")
+
+            escrow_id = esc.result['hash']
+            escrow_seq = esc.result['tx_json']['Sequence']
+            contribution_escrows.append({
+                'contribution_id': c['id'],
+                'escrow_id': escrow_id,
+                'escrow_sequence': escrow_seq,
+            })
+            balance_deductions.append({'user_id': u['id'], 'amount': float(c['amount'])})
+            if first_escrow_id is None:
+                first_escrow_id = escrow_id
+                first_escrow_seq = escrow_seq
+
+        # Record acceptance and update contribution escrow metadata and balances atomically
+        db.accept_bounty_multi(
+            bounty_id,
+            accept.developer_address,
+            first_escrow_id,
+            first_escrow_seq,
+            developer_secret_key,
+            condition_hex,
+            fulfillment_hex,
+            preimage_hex,
+            contribution_escrows,
+            balance_deductions
         )
         
         return {
             "message": "Bounty accepted successfully", 
             "bounty_id": bounty_id,
             "funder_id": bounty['funder_id'],
-            "developer_secret_key": developer_secret_key
+            "developer_secret_key": developer_secret_key,
+            "cancel_after_seconds": cancel_after_seconds
         }
     except HTTPException:
         raise
@@ -337,7 +392,7 @@ def accept_bounty(bounty_id: int, accept: BountyAccept):
 
 @app.post("/bounties/{bounty_id}/claim")
 def claim_bounty(bounty_id: int, claim: BountyClaim):
-    """Verify PR and developer key, then finish escrow and mark claimed."""
+    """Verify PR and developer key, then finish escrow(s) and mark claimed."""
     try:
         bounty = db.get_bounty_by_id(bounty_id)
         if not bounty:
@@ -346,10 +401,9 @@ def claim_bounty(bounty_id: int, claim: BountyClaim):
         if bounty['status'] != "accepted":
             raise HTTPException(status_code=400, detail="Bounty is not available for claiming")
         
-        if not bounty['escrow_id']:
-            raise HTTPException(status_code=400, detail="No escrow found for this bounty")
+        # Multi-contrib: escrows are recorded on contributions; legacy: on bounty
         
-        issue_number = utils.extract_issue_number_from_url(bounty['github_issue_url'])
+        issue_number = github_utils.extract_issue_number_from_url(bounty['github_issue_url'])
         if not issue_number:
             raise HTTPException(status_code=400, detail="Invalid GitHub issue URL")
         
@@ -358,60 +412,65 @@ def claim_bounty(bounty_id: int, claim: BountyClaim):
         if not stored_dev_key:
             raise HTTPException(status_code=400, detail="No developer secret key found for this bounty")
 
-        if not utils.verify_merge_request_contains_issue(claim.merge_request_url, issue_number, stored_dev_key):
+        if not github_utils.verify_merge_request_contains_issue(claim.merge_request_url, issue_number, stored_dev_key):
             raise HTTPException(
                 status_code=400, 
                 detail="Merge request must contain both the issue number reference and the developer secret key"
             )
         
-        escrow_details = utils.get_escrow_transaction(bounty['escrow_id'])
-        if not escrow_details:
-            raise HTTPException(status_code=400, detail="Could not retrieve escrow transaction details")
+        # Fetch internal to get fulfillment
+        internal = db.get_bounty_internal_by_id(bounty_id)
+        if not internal or not internal.get('escrow_fulfillment'):
+            raise HTTPException(status_code=400, detail="No escrow fulfillment available")
 
-        funder = db.get_user_by_id(bounty['funder_id'])
-        if not funder:
-            raise HTTPException(status_code=404, detail="Funder not found")
-        
         try:
-            tx_response = utils.finish_time_based_escrow(
-                bounty['escrow_sequence'],
-                funder['xrp_seed'],
-                bounty['funder_address']
-            )
-            
+            # Determine contributions with escrows
+            contributions = db.get_contributions_by_bounty(bounty_id)
+            tx_results = []
+            if contributions:
+                for c in contributions:
+                    if not c.get('escrow_sequence'):
+                        continue
+                    contributor = db.get_user_by_id(c['contributor_id'])
+                    if not contributor or not contributor.get('xrp_seed'):
+                        continue
+                    tx_response = xrpl_utils.finish_conditional_escrow(
+                        owner_address=c['contributor_address'],
+                        offer_sequence=c['escrow_sequence'],
+                        finisher_seed=contributor['xrp_seed'],
+                        fulfillment_hex=internal['escrow_fulfillment']
+                    )
+                    tx_results.append(tx_response.result)
+            else:
+                # Legacy single-escrow path on bounty
+                funder = db.get_user_by_id(bounty['funder_id'])
+                if not funder:
+                    raise HTTPException(status_code=404, detail="Funder not found")
+                tx_response = xrpl_utils.finish_conditional_escrow(
+                    owner_address=bounty['funder_address'],
+                    offer_sequence=bounty['escrow_sequence'],
+                    finisher_seed=funder['xrp_seed'],
+                    fulfillment_hex=internal['escrow_fulfillment']
+                )
+                tx_results.append(tx_response.result)
+
             db.claim_bounty(bounty_id)
             
             return {
-                "message": "Bounty claimed successfully and time-based escrow fulfilled",
+                "message": "Bounty claimed successfully and escrow(s) fulfilled",
                 "bounty_id": bounty_id,
                 "funder_id": bounty['funder_id'],
                 "developer_address": bounty['developer_address'],
                 "merge_request_url": claim.merge_request_url,
                 "status": "claimed",
-                "escrow_id": bounty['escrow_id'],
-                "escrow_details": escrow_details,
-                "tx_response": tx_response.result
+                "tx_results": tx_results
             }
             
         except Exception as e:
             error_msg = str(e)
-            # Common case: trying to finish before FinishAfter has passed
+            # Could not finish escrow; likely condition/permission issue
             if "tecNO_PERMISSION" in error_msg or "No permission" in error_msg:
-                finish_after_ripple = None
-                # Attempt to extract the FinishAfter from the escrow create tx
-                if isinstance(escrow_details, dict):
-                    tx_obj = escrow_details.get('tx') if isinstance(escrow_details.get('tx'), dict) else escrow_details
-                    finish_after_ripple = tx_obj.get('FinishAfter') if isinstance(tx_obj, dict) else None
-
-                # Compute current ripple time to help callers understand remaining wait
-                now_ripple = datetime_to_ripple_time(datetime.now())
-                remaining = (finish_after_ripple - now_ripple) if isinstance(finish_after_ripple, int) else None
-
-                human_hint = "Escrow cannot be finished yet. Please wait until the FinishAfter time."
-                if isinstance(remaining, int) and remaining > 0:
-                    human_hint += f" Approximately {remaining} seconds remaining."
-
-                raise HTTPException(status_code=400, detail=human_hint)
+                raise HTTPException(status_code=400, detail="Escrow cannot be finished at this time. Verify the fulfillment and try again later.")
 
             raise HTTPException(status_code=500, detail=f"Failed to fulfill time-based escrow: {error_msg}")
             
@@ -419,6 +478,56 @@ def claim_bounty(bounty_id: int, claim: BountyClaim):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to claim bounty: {str(e)}")
+
+@app.post("/bounties/{bounty_id}/boost")
+def boost_bounty(bounty_id: int, boost: BountyBoost):
+    """Add additional funds to an existing open bounty by another user."""
+    try:
+        bounty = db.get_bounty_by_id(bounty_id)
+        if not bounty:
+            raise HTTPException(status_code=404, detail="Bounty not found")
+        if bounty['status'] != 'open':
+            raise HTTPException(status_code=400, detail="Can only boost an open bounty")
+
+        # Disallow creator boosting by requirement; relax if desired
+        if boost.contributor_id == bounty['funder_id']:
+            raise HTTPException(status_code=400, detail="Creator cannot boost their own bounty")
+
+        if boost.amount <= 0:
+            raise HTTPException(status_code=400, detail="Amount must be positive")
+
+        user = db.get_user_by_id(boost.contributor_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if user['current_xrp_balance'] < boost.amount:
+            raise HTTPException(status_code=400, detail="Insufficient balance to pledge this amount")
+
+        contribution_id = db.add_contribution(bounty_id, boost.contributor_id, float(boost.amount))
+        updated = db.get_bounty_by_id(bounty_id)
+        return {
+            "message": "Boost added",
+            "bounty_id": bounty_id,
+            "contribution_id": contribution_id,
+            "new_amount": updated['amount'] if updated else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to boost bounty: {str(e)}")
+
+@app.get("/bounties/{bounty_id}/contributions", response_model=List[BountyContribution])
+def get_bounty_contributions(bounty_id: int):
+    """List contributions for a bounty, including escrow identifiers if created."""
+    try:
+        bounty = db.get_bounty_by_id(bounty_id)
+        if not bounty:
+            raise HTTPException(status_code=404, detail="Bounty not found")
+        contributions = db.get_contributions_by_bounty(bounty_id)
+        return contributions
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get contributions: {str(e)}")
 
 @app.get("/bounties/{bounty_id}", response_model=Bounty)
 def get_bounty(bounty_id: int):
@@ -450,6 +559,35 @@ def get_bounty(bounty_id: int):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get bounty: {str(e)}")
+
+@app.get("/bounties/{bounty_id}/developer-secret")
+def get_bounty_developer_secret(bounty_id: int, user_id: int):
+    """Return the developer secret key only if the caller is the assigned developer."""
+    try:
+        bounty = db.get_bounty_internal_by_id(bounty_id)
+        if not bounty:
+            raise HTTPException(status_code=404, detail="Bounty not found")
+
+        # Must be accepted and have a developer assigned
+        if not bounty.get('developer_address'):
+            raise HTTPException(status_code=400, detail="No developer assigned for this bounty")
+
+        user = db.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if user.get('xrp_address') != bounty.get('developer_address'):
+            raise HTTPException(status_code=403, detail="Forbidden: Not the assigned developer")
+
+        dev_key = db.get_developer_secret_key(bounty_id)
+        if not dev_key:
+            raise HTTPException(status_code=404, detail="Developer secret key not found")
+
+        return {"developer_secret_key": dev_key}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get developer secret: {str(e)}")
 
 @app.post("/bounties/{bounty_id}/cancel")
 def cancel_bounty(bounty_id: int):
@@ -542,7 +680,7 @@ def fund_user_wallet(user_id: int):
             )
         
         try:
-            funding_result = utils.fund_existing_wallet(user['xrp_seed'])
+            funding_result = xrpl_utils.fund_existing_wallet(user['xrp_seed'])
         except Exception as faucet_error:
             raise HTTPException(
                 status_code=503, 

@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-
-// Simple top progress bar that animates on route change
 const ProgressBar: React.FC = () => {
   const location = useLocation();
   const [active, setActive] = useState(false);

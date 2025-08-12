@@ -43,7 +43,7 @@ const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 fade-in">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <h2 className="text-4xl font-bold gradient-text mb-2">
+          <h2 className="text-4xl font-bold gradient-text text-balance mb-2">
             Welcome Back
           </h2>
           <p className="text-gray-400">

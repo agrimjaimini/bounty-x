@@ -1,18 +1,7 @@
 import axios from 'axios';
-import {
-  Bounty,
-  User,
-  UserRegister,
-  UserLogin,
-  BountyCreate,
-  BountyAccept,
-  BountyClaim,
-  BountyStatistics,
-  PlatformStatistics,
-  UserStatistics,
-} from '../types/api';
+import { UserRegister, UserLogin, BountyCreate, BountyAccept, BountyClaim, PlatformStatistics } from '../types/api';
 
-const API_BASE_URL = "https://18-222-139-25.sslip.io";
+const API_BASE_URL = "http://localhost:8000";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -76,6 +65,11 @@ export const bountyApi = {
     return response.data;
   },
 
+  getDeveloperSecret: async (bountyId: number, userId: number) => {
+    const response = await api.get(`/bounties/${bountyId}/developer-secret`, { params: { user_id: userId } });
+    return response.data as { developer_secret_key: string };
+  },
+
   searchBounties: async (name?: string, githubUrl?: string) => {
     const params = new URLSearchParams();
     if (name) params.append('name', name);
@@ -95,6 +89,11 @@ export const bountyApi = {
     return response.data;
   },
 
+  getBountiesByContributor: async (userId: number) => {
+    const response = await api.get(`/bounties/contributor/${userId}`);
+    return response.data;
+  },
+
   getBountiesByDeveloper: async (developerAddress: string) => {
     const response = await api.get(`/bounties/developer/${developerAddress}`);
     return response.data;
@@ -102,6 +101,11 @@ export const bountyApi = {
 
   acceptBounty: async (bountyId: number, acceptData: BountyAccept) => {
     const response = await api.post(`/bounties/${bountyId}/accept`, acceptData);
+    return response.data;
+  },
+
+  boostBounty: async (bountyId: number, contributorId: number, amount: number) => {
+    const response = await api.post(`/bounties/${bountyId}/boost`, { contributor_id: contributorId, amount });
     return response.data;
   },
 
@@ -113,6 +117,21 @@ export const bountyApi = {
   cancelBounty: async (bountyId: number) => {
     const response = await api.post(`/bounties/${bountyId}/cancel`);
     return response.data;
+  },
+
+  getContributions: async (bountyId: number) => {
+    const response = await api.get(`/bounties/${bountyId}/contributions`);
+    return response.data as Array<{
+      id: number;
+      bounty_id: number;
+      contributor_id: number;
+      contributor_address: string;
+      amount: number;
+      escrow_id?: string | null;
+      escrow_sequence?: number | null;
+      created_at: string;
+      updated_at: string;
+    }>;
   },
 
   getBountyStatistics: async () => {
